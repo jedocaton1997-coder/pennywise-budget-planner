@@ -759,12 +759,12 @@ function FlowPlanningPanel({
           className="cfp-plan-head"
           style={{
             gridTemplateColumns:
-              "88px minmax(190px, 1.35fr) minmax(150px, 0.85fr) 120px 44px",
+              "88px minmax(260px, 1.8fr) minmax(150px, 0.7fr) 120px 44px",
           }}
         >
           <span>Date</span>
           <span>{tone === "income" ? "Source" : "Category"}</span>
-          <span>Description</span>
+          <span style={{ paddingLeft: 18 }}>Description</span>
           <span>Amount</span>
           <span>Actions</span>
         </div>
@@ -774,13 +774,16 @@ function FlowPlanningPanel({
             className={`cfp-plan-row ${openActionItem?.id === item.id ? "menu-open" : ""}`}
             style={{
               gridTemplateColumns:
-                "88px minmax(190px, 1.35fr) minmax(150px, 0.85fr) 120px 44px",
+                "88px minmax(260px, 1.8fr) minmax(150px, 0.7fr) 120px 44px",
             }}
             onClick={() => onEdit?.(item)}
           >
             <FlowDateCard value={item.date} />
             <span className="cfp-plan-source"><CategoryIcon value={item.category} /><span><b>{tone === "income" ? item.category : categoryBase(item.category)}</b></span></span>
-            <span className="cfp-plan-desc">{item.title}<small>{item.source}</small></span>
+            <span className="cfp-plan-desc" style={{ paddingLeft: 18 }}>
+              {item.title}
+              <small>{item.source}</small>
+            </span>
             <strong>{money(item.amount)}</strong>
             <span className="cfp-action-cell">
               <button
