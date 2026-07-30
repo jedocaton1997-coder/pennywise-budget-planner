@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -793,81 +794,84 @@ function FlowPlanningPanel({
           </div>
         ))}
       </div>
-      {openActionItem && menuPosition && (
-        <>
-          <button
-            type="button"
-            aria-label="Close actions"
-            onClick={closeActionMenu}
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 9998,
-              border: 0,
-              padding: 0,
-              background: "transparent",
-              cursor: "default",
-            }}
-          />
+      {openActionItem &&
+        menuPosition &&
+        createPortal(
+          <>
+            <button
+              type="button"
+              aria-label="Close actions"
+              onClick={closeActionMenu}
+              style={{
+                position: "fixed",
+                inset: 0,
+                zIndex: 2147483645,
+                border: 0,
+                padding: 0,
+                background: "transparent",
+                cursor: "default",
+              }}
+            />
 
-          <div
-            role="menu"
-            aria-label={`Actions for ${openActionItem.title}`}
-            onClick={(event) => event.stopPropagation()}
-            style={{
-              position: "fixed",
-              top: menuPosition.top,
-              left: menuPosition.left,
-              zIndex: 9999,
-              width: 220,
-              padding: 10,
-              border: "1px solid #e2e9e6",
-              borderRadius: 20,
-              background: "#ffffff",
-              boxShadow:
-                "0 18px 40px rgba(16, 44, 34, 0.14), 0 3px 10px rgba(16, 44, 34, 0.08)",
-            }}
-          >
-            {actionLabels.map((label, index) => (
-              <button
-                key={label}
-                type="button"
-                role="menuitem"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  runAction(label, openActionItem);
-                }}
-                style={{
-                  display: "flex",
-                  width: "100%",
-                  minHeight: 52,
-                  alignItems: "center",
-                  justifyContent: "flex-start",
-                  padding: "0 16px",
-                  border: 0,
-                  borderRadius: 14,
-                  background: index === 0 ? "#eff8f3" : "transparent",
-                  color:
-                    label === "Delete"
-                      ? "#d6433a"
-                      : index === 0 || label.includes("Mark")
-                        ? "#16875d"
-                        : "#24372f",
-                  font: "inherit",
-                  fontSize: 16,
-                  fontWeight: 500,
-                  lineHeight: 1,
-                  textAlign: "left",
-                  cursor: "pointer",
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
+            <div
+              role="menu"
+              aria-label={`Actions for ${openActionItem.title}`}
+              onClick={(event) => event.stopPropagation()}
+              style={{
+                position: "fixed",
+                top: menuPosition.top,
+                left: menuPosition.left,
+                zIndex: 2147483646,
+                width: 220,
+                padding: 10,
+                border: "1px solid #e2e9e6",
+                borderRadius: 20,
+                background: "#ffffff",
+                boxShadow:
+                  "0 18px 40px rgba(16, 44, 34, 0.14), 0 3px 10px rgba(16, 44, 34, 0.08)",
+              }}
+            >
+              {actionLabels.map((label, index) => (
+                <button
+                  key={label}
+                  type="button"
+                  role="menuitem"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    runAction(label, openActionItem);
+                  }}
+                  style={{
+                    display: "flex",
+                    width: "100%",
+                    minHeight: 52,
+                    alignItems: "center",
+                    justifyContent: "flex-start",
+                    padding: "0 16px",
+                    border: 0,
+                    borderRadius: 14,
+                    background: index === 0 ? "#eff8f3" : "transparent",
+                    color:
+                      label === "Delete"
+                        ? "#d6433a"
+                        : index === 0 || label.includes("Mark")
+                          ? "#16875d"
+                          : "#24372f",
+                    font: "inherit",
+                    fontSize: 16,
+                    fontWeight: 500,
+                    lineHeight: 1,
+                    textAlign: "left",
+                    cursor: "pointer",
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </>,
+          document.body,
+        )}
       <div className="cfp-total-row"><b>{totalLabel}</b><strong>{money(totalValue)}</strong></div>
       <div className="cfp-tip"><AlertTriangle /><span>{tip}</span></div>
     </article>
