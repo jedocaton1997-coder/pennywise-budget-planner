@@ -755,9 +755,29 @@ function FlowPlanningPanel({
         </div>
       )}
       <div className={`cfp-plan-table ${tone}`}>
-        <div className="cfp-plan-head"><span>Date</span><span>{tone === "income" ? "Source" : "Category"}</span><span>Description</span><span>Amount</span><span>Actions</span></div>
+        <div
+          className="cfp-plan-head"
+          style={{
+            gridTemplateColumns:
+              "88px minmax(190px, 1.35fr) minmax(150px, 0.85fr) 120px 44px",
+          }}
+        >
+          <span>Date</span>
+          <span>{tone === "income" ? "Source" : "Category"}</span>
+          <span>Description</span>
+          <span>Amount</span>
+          <span>Actions</span>
+        </div>
         {items.map((item) => (
-          <div key={item.id} className={`cfp-plan-row ${openActionItem?.id === item.id ? "menu-open" : ""}`} onClick={() => onEdit?.(item)}>
+          <div
+            key={item.id}
+            className={`cfp-plan-row ${openActionItem?.id === item.id ? "menu-open" : ""}`}
+            style={{
+              gridTemplateColumns:
+                "88px minmax(190px, 1.35fr) minmax(150px, 0.85fr) 120px 44px",
+            }}
+            onClick={() => onEdit?.(item)}
+          >
             <FlowDateCard value={item.date} />
             <span className="cfp-plan-source"><CategoryIcon value={item.category} /><span><b>{tone === "income" ? item.category : categoryBase(item.category)}</b></span></span>
             <span className="cfp-plan-desc">{item.title}<small>{item.source}</small></span>
