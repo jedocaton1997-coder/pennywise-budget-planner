@@ -1,5 +1,4 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -524,8 +523,39 @@ export default function CashFlowPlanning() {
           breakdown={incomeBreakdown}
           onAdd={() => setAddingIncome(true)}
           onEdit={(item) => {
-            const record = item.incomeRecordId ? income.find((row) => String(row.id) === String(item.incomeRecordId)) : null;
-            if (record) setEditingIncome(record);
+            const record = item.incomeRecordId
+              ? income.find((row) => String(row.id) === String(item.incomeRecordId))
+              : null;
+
+            if (record) {
+              setEditingIncome(record);
+              return;
+            }
+
+            // Fallback for expected-income rows that came from the planning collection.
+            const plannedIncome = planned.find(
+              (row) =>
+                row.type === "Income" &&
+                row.name === item.title &&
+                (row.date || row.expectedDate || row.dueDate || "") === item.date,
+            );
+
+            if (plannedIncome) {
+              setEditingIncome({
+                id: plannedIncome.id,
+                source: plannedIncome.name,
+                type: "Other",
+                category: plannedIncome.category || "Income",
+                amount: plannedIncome.amount,
+                expectedDate:
+                  plannedIncome.date ||
+                  plannedIncome.expectedDate ||
+                  plannedIncome.dueDate ||
+                  incomeStart,
+                frequency: plannedIncome.frequency || "One-time",
+                status: plannedIncome.status || "Expected",
+              });
+            }
           }}
           onDelete={deleteIncome}
           onDuplicate={duplicateIncome}
@@ -684,12 +714,30 @@ function FlowPlanningPanel({
 }) {
   const totalValue = total(items);
   const [openActionItem, setOpenActionItem] = useState<FlowItem | null>(null);
-  const actionLabels = tone === "income" ? ["Edit", "Delete", "Duplicate", "Mark as received"] : ["Edit", "Delete", "Duplicate", "Mark as paid"];
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
+
+  const actionLabels =
+    tone === "income"
+      ? ["Edit", "Delete", "Duplicate", "Mark as received"]
+      : ["Edit", "Delete", "Duplicate", "Mark as paid"];
+
+  const closeActionMenu = () => {
+    setOpenActionItem(null);
+    setMenuPosition(null);
+  };
+
   const runAction = (label: string, item: FlowItem) => {
-    if (label === "Edit") onEdit?.(item);
-    if (label === "Delete") onDelete?.(item);
-    if (label === "Duplicate") onDuplicate?.(item);
-    if (label === "Mark as received" || label === "Mark as paid") onMarkComplete?.(item);
+    closeActionMenu();
+
+    // Let the menu close first, then open the edit form or perform the action.
+    window.setTimeout(() => {
+      if (label === "Edit") onEdit?.(item);
+      if (label === "Delete") onDelete?.(item);
+      if (label === "Duplicate") onDuplicate?.(item);
+      if (label === "Mark as received" || label === "Mark as paid") {
+        onMarkComplete?.(item);
+      }
+    }, 0);
   };
   return (
     <article className={`surface cfp-plan-panel ${tone}`}>
@@ -721,14 +769,23 @@ function FlowPlanningPanel({
                 type="button"
                 aria-label={`Open actions for ${item.title}`}
                 aria-expanded={openActionItem?.id === item.id}
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  setOpenActionItem(item);
-                }}
                 onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
+
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  const menuWidth = 220;
+                  const viewportPadding = 12;
+                  const left = Math.min(
+                    window.innerWidth - menuWidth - viewportPadding,
+                    Math.max(viewportPadding, rect.right - menuWidth),
+                  );
+
+                  setMenuPosition({
+                    top: rect.bottom + 8,
+                    left,
+                  });
+                  setOpenActionItem(item);
                 }}
               >
                 <MoreVertical />
@@ -737,68 +794,48 @@ function FlowPlanningPanel({
           </div>
         ))}
       </div>
-      {openActionItem &&
-        createPortal(
+      {openActionItem && menuPosition && (
+        <>
+          <button
+            type="button"
+            className="cfp-menu-clickaway"
+            aria-label="Close actions"
+            onClick={closeActionMenu}
+          />
           <div
-            className="modal-backdrop cfp-action-backdrop cfp-viewport-modal"
-            onMouseDown={() => setOpenActionItem(null)}
+            className="cfp-action-dropdown"
+            role="menu"
+            aria-label={`Actions for ${openActionItem.title}`}
+            style={{
+              top: menuPosition.top,
+              left: menuPosition.left,
+            }}
+            onClick={(event) => event.stopPropagation()}
           >
-            <section
-              className="modal cfp-action-modal"
-              role="dialog"
-              aria-modal="true"
-              aria-label={`Actions for ${openActionItem.title}`}
-              onMouseDown={(event) => event.stopPropagation()}
-            >
-              <div className="modal-head">
-                <div>
-                  <h2>{openActionItem.title}</h2>
-                  <p>
-                    {formatDate(openActionItem.date)} · {money(openActionItem.amount)}
-                  </p>
-                </div>
-                <button
-                  className="icon-button"
-                  type="button"
-                  aria-label="Close actions"
-                  onClick={() => setOpenActionItem(null)}
-                >
-                  <X />
-                </button>
-              </div>
-
-              <div className="cfp-action-list">
-                {actionLabels.map((label) => (
-                  <button
-                    key={label}
-                    type="button"
-                    className={
-                      label === "Delete"
-                        ? "danger-outline"
-                        : label.includes("Mark")
-                          ? "primary"
-                          : "outline"
-                    }
-                    onMouseDown={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      const item = openActionItem;
-                      setOpenActionItem(null);
-                      runAction(label, item);
-                    }}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </section>
-          </div>,
-          document.body,
-        )}
+            {actionLabels.map((label) => (
+              <button
+                key={label}
+                type="button"
+                role="menuitem"
+                className={[
+                  "cfp-action-option",
+                  label === "Delete" ? "danger" : "",
+                  label.includes("Mark") ? "complete" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  runAction(label, openActionItem);
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
       <div className="cfp-total-row"><b>{totalLabel}</b><strong>{money(totalValue)}</strong></div>
       <div className="cfp-tip"><AlertTriangle /><span>{tip}</span></div>
     </article>
@@ -820,15 +857,9 @@ function ExpectedIncomeModal({
 }) {
   const accountOptions = accounts.length ? accounts.map((account) => account.name) : ["Cash"];
   const isEditing = Boolean(income);
-  return createPortal(
-    <div className="modal-backdrop cfp-viewport-modal" onMouseDown={onClose}>
-      <section
-        className="modal cfp-income-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={isEditing ? "Edit expected income" : "Add expected income"}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
+  return (
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <section className="modal cfp-income-modal" role="dialog" aria-modal="true" aria-label={isEditing ? "Edit expected income" : "Add expected income"} onMouseDown={(event) => event.stopPropagation()}>
         <div className="modal-head">
           <div>
             <h2>{isEditing ? "Edit expected income" : "Add expected income"}</h2>
@@ -917,8 +948,7 @@ function ExpectedIncomeModal({
           </button>
         </form>
       </section>
-    </div>,
-    document.body,
+    </div>
   );
 }
 
@@ -934,15 +964,9 @@ function ExpectedExpenseModal({
   onSave: (record: PlannedRecord) => void;
 }) {
   const isEditing = Boolean(expense);
-  return createPortal(
-    <div className="modal-backdrop cfp-viewport-modal" onMouseDown={onClose}>
-      <section
-        className="modal cfp-income-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={isEditing ? "Edit expected expense" : "Add expected expense"}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
+  return (
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <section className="modal cfp-income-modal" role="dialog" aria-modal="true" aria-label={isEditing ? "Edit expected expense" : "Add expected expense"} onMouseDown={(event) => event.stopPropagation()}>
         <div className="modal-head">
           <div>
             <h2>{isEditing ? "Edit expected expense" : "Add expected expense"}</h2>
@@ -1001,7 +1025,6 @@ function ExpectedExpenseModal({
           </button>
         </form>
       </section>
-    </div>,
-    document.body,
+    </div>
   );
 }
