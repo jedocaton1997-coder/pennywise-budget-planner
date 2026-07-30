@@ -139,6 +139,52 @@ const currentSemiMonthlyWindows = () => {
   };
 };
 
+const followingExpenseWindow = (incomeEndValue: string) => {
+  const incomeEndDate = parseLocal(incomeEndValue);
+
+  // Income ending on or before the 15th:
+  // expenses cover the 16th through the last day of the same month.
+  if (incomeEndDate.getDate() <= 15) {
+    const start = new Date(
+      incomeEndDate.getFullYear(),
+      incomeEndDate.getMonth(),
+      16,
+      12,
+    );
+    const end = new Date(
+      incomeEndDate.getFullYear(),
+      incomeEndDate.getMonth() + 1,
+      0,
+      12,
+    );
+
+    return {
+      start: iso(start),
+      end: iso(end),
+    };
+  }
+
+  // Income ending after the 15th:
+  // expenses cover the 1st through the 15th of the next month.
+  const start = new Date(
+    incomeEndDate.getFullYear(),
+    incomeEndDate.getMonth() + 1,
+    1,
+    12,
+  );
+  const end = new Date(
+    incomeEndDate.getFullYear(),
+    incomeEndDate.getMonth() + 1,
+    15,
+    12,
+  );
+
+  return {
+    start: iso(start),
+    end: iso(end),
+  };
+};
+
 const formatDate = (value: string) =>
   parseLocal(value).toLocaleDateString("en-US", { month: "short", day: "numeric", weekday: "short" }).replace(",", "");
 
@@ -412,11 +458,13 @@ export default function CashFlowPlanning() {
   const netExpected = flow.expectedIncome - expectedExpenses;
   const incomeBreakdown = breakdownBy(flow.incomeItems, (item) => item.category || item.title, incomeColors);
   const expenseBreakdown = breakdownBy(flow.outflowItems, (item) => categoryBase(item.category), expenseColors);
-  const setPairedRange = (start: string, end: string) => {
+  const setIncomeAndFollowingExpenseRange = (start: string, end: string) => {
     setIncomeStart(start);
     setIncomeEnd(end);
-    setExpenseStart(start);
-    setExpenseEnd(end);
+
+    const nextExpenseWindow = followingExpenseWindow(end);
+    setExpenseStart(nextExpenseWindow.start);
+    setExpenseEnd(nextExpenseWindow.end);
   };
   const movePeriod = (direction: -1 | 1) => {
     const start = parseLocal(incomeStart);
@@ -424,23 +472,23 @@ export default function CashFlowPlanning() {
     if (periodMode === "Monthly") {
       start.setMonth(start.getMonth() + direction, 1);
       const end = new Date(start.getFullYear(), start.getMonth() + 1, 0, 12);
-      setPairedRange(iso(start), iso(end));
+      setIncomeAndFollowingExpenseRange(iso(start), iso(end));
       return;
     }
     const nextStart = addDays(incomeStart, direction * days);
     const nextEnd = addDays(incomeEnd, direction * days);
-    setPairedRange(nextStart, nextEnd);
+    setIncomeAndFollowingExpenseRange(nextStart, nextEnd);
   };
   const applyMode = (mode: "Weekly" | "Biweekly" | "Monthly" | "Custom") => {
     setPeriodMode(mode);
     if (mode === "Custom") return;
     const start = parseLocal(incomeStart);
-    if (mode === "Weekly") setPairedRange(iso(start), addDays(iso(start), 6));
-    if (mode === "Biweekly") setPairedRange(iso(start), addDays(iso(start), 15));
+    if (mode === "Weekly") setIncomeAndFollowingExpenseRange(iso(start), addDays(iso(start), 6));
+    if (mode === "Biweekly") setIncomeAndFollowingExpenseRange(iso(start), addDays(iso(start), 15));
     if (mode === "Monthly") {
       const monthStart = new Date(start.getFullYear(), start.getMonth(), 1, 12);
       const monthEnd = new Date(start.getFullYear(), start.getMonth() + 1, 0, 12);
-      setPairedRange(iso(monthStart), iso(monthEnd));
+      setIncomeAndFollowingExpenseRange(iso(monthStart), iso(monthEnd));
     }
   };
   const duplicateIncome = (item: FlowItem) => {
@@ -1086,4 +1134,3 @@ function ExpectedExpenseModal({
       </section>
     </div>
   );
-}
