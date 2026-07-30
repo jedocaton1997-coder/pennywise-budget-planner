@@ -6,7 +6,6 @@ import {
   ChevronDown,
   CircleDollarSign,
   Clock3,
-  Filter,
   Landmark,
   PiggyBank,
   TrendingDown,
@@ -516,7 +515,7 @@ export default function DashboardOverview({
 
   return (
     <main className="cf-dashboard">
-      <header className="cf-header">
+      <header className="cf-header cf-header-clean">
         <div>
           <h1>
             {getGreeting()}, Jedo! <span aria-hidden="true">👋</span>
@@ -524,19 +523,6 @@ export default function DashboardOverview({
           <p>
             Here&apos;s your cash flow overview for {selectedRangeLabel}.
           </p>
-        </div>
-
-        <div className="cf-header-actions">
-          <button type="button" className="cf-date-button">
-            <CalendarDays size={18} />
-            {selectedRangeLabel}
-            <ChevronDown size={16} />
-          </button>
-          <button type="button" className="cf-filter-button">
-            <Filter size={18} />
-            Filters
-            <ChevronDown size={16} />
-          </button>
         </div>
       </header>
 
