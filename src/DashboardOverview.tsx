@@ -162,9 +162,17 @@ function daysUntil(value: string) {
   return Math.round((toUtcDay(due) - toUtcDay(today)) / 86_400_000)
 }
 
-function formatUpcomingDate(value: string) {
+function formatUpcomingDate(
+  value: string,
+): { month: string; day: string } {
   const date = parseLocalDate(value)
-  if (!date) return value
+
+  if (!date) {
+    return {
+      month: '—',
+      day: '—',
+    }
+  }
 
   return {
     month: MONTH_SHORT[date.getMonth()],
