@@ -20,15 +20,15 @@ import {
   TrendingUp,
   Wallet,
 } from "lucide-react";
-import { BankLogo } from "./BankLogo";
-import { CategoryIcon } from "./CategoryIcon";
+import { BankLogo } from "./components/BankLogo";
+import { CategoryIcon } from "./components/CategoryIcon";
 import {
   computeCard,
   type CardConfig,
   type CardPayment,
   type CardStatement,
   type CardTransaction,
-} from "../domain/creditCardEngine";
+} from "./domain/creditCardEngine";
 
 export type AccountRecord = {
   id: number | string;
