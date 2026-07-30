@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
-import AccountsCardsDashboard from "./components/AccountsCardsDashboard";
-import "./components/AccountsCardsDashboard.css";
+import AccountsCardsDashboard from "./AccountsCardsDashboard";
+import "./AccountsCardsDashboard.css";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { BankLogo } from './components/BankLogo'
 import { BankAutocomplete } from './components/BankAutocomplete'
