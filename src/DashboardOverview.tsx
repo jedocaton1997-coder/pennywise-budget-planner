@@ -519,7 +519,7 @@ export default function DashboardOverview({
       <header className="cf-header">
         <div>
           <h1>
-            {getGreeting()}, George! <span aria-hidden="true">👋</span>
+            {getGreeting()}, Jedo! <span aria-hidden="true">👋</span>
           </h1>
           <p>
             Here&apos;s your cash flow overview for {selectedRangeLabel}.
