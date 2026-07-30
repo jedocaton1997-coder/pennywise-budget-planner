@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
+import "./AccountsCardsRedesign.css";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { BankLogo } from './components/BankLogo'
 import { BankAutocomplete } from './components/BankAutocomplete'
