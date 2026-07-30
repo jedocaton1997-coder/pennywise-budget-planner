@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -736,43 +737,68 @@ function FlowPlanningPanel({
           </div>
         ))}
       </div>
-      {openActionItem && (
-        <div className="modal-backdrop cfp-action-backdrop" onMouseDown={() => setOpenActionItem(null)}>
-          <section className="modal cfp-action-modal" role="dialog" aria-modal="true" aria-label={`Actions for ${openActionItem.title}`} onMouseDown={(event) => event.stopPropagation()}>
-            <div className="modal-head">
-              <div>
-                <h2>{openActionItem.title}</h2>
-                <p>{formatDate(openActionItem.date)} · {money(openActionItem.amount)}</p>
-              </div>
-              <button className="icon-button" type="button" aria-label="Close actions" onClick={() => setOpenActionItem(null)}>
-                <X />
-              </button>
-            </div>
-            <div className="cfp-action-list">
-              {actionLabels.map((label) => (
+      {openActionItem &&
+        createPortal(
+          <div
+            className="modal-backdrop cfp-action-backdrop cfp-viewport-modal"
+            onMouseDown={() => setOpenActionItem(null)}
+          >
+            <section
+              className="modal cfp-action-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-label={`Actions for ${openActionItem.title}`}
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="modal-head">
+                <div>
+                  <h2>{openActionItem.title}</h2>
+                  <p>
+                    {formatDate(openActionItem.date)} · {money(openActionItem.amount)}
+                  </p>
+                </div>
                 <button
-                  key={label}
+                  className="icon-button"
                   type="button"
-                  className={label === "Delete" ? "danger-outline" : label.includes("Mark") ? "primary" : "outline"}
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    const item = openActionItem;
-                    setOpenActionItem(null);
-                    runAction(label, item);
-                  }}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                  }}
+                  aria-label="Close actions"
+                  onClick={() => setOpenActionItem(null)}
                 >
-                  {label}
+                  <X />
                 </button>
-              ))}
-            </div>
-          </section>
-        </div>
-      )}
+              </div>
+
+              <div className="cfp-action-list">
+                {actionLabels.map((label) => (
+                  <button
+                    key={label}
+                    type="button"
+                    className={
+                      label === "Delete"
+                        ? "danger-outline"
+                        : label.includes("Mark")
+                          ? "primary"
+                          : "outline"
+                    }
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      const item = openActionItem;
+                      setOpenActionItem(null);
+                      runAction(label, item);
+                    }}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </section>
+          </div>,
+          document.body,
+        )}
       <div className="cfp-total-row"><b>{totalLabel}</b><strong>{money(totalValue)}</strong></div>
       <div className="cfp-tip"><AlertTriangle /><span>{tip}</span></div>
     </article>
@@ -794,9 +820,15 @@ function ExpectedIncomeModal({
 }) {
   const accountOptions = accounts.length ? accounts.map((account) => account.name) : ["Cash"];
   const isEditing = Boolean(income);
-  return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
-      <section className="modal cfp-income-modal" role="dialog" aria-modal="true" aria-label={isEditing ? "Edit expected income" : "Add expected income"} onMouseDown={(event) => event.stopPropagation()}>
+  return createPortal(
+    <div className="modal-backdrop cfp-viewport-modal" onMouseDown={onClose}>
+      <section
+        className="modal cfp-income-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={isEditing ? "Edit expected income" : "Add expected income"}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <div className="modal-head">
           <div>
             <h2>{isEditing ? "Edit expected income" : "Add expected income"}</h2>
@@ -885,7 +917,8 @@ function ExpectedIncomeModal({
           </button>
         </form>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -901,9 +934,15 @@ function ExpectedExpenseModal({
   onSave: (record: PlannedRecord) => void;
 }) {
   const isEditing = Boolean(expense);
-  return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
-      <section className="modal cfp-income-modal" role="dialog" aria-modal="true" aria-label={isEditing ? "Edit expected expense" : "Add expected expense"} onMouseDown={(event) => event.stopPropagation()}>
+  return createPortal(
+    <div className="modal-backdrop cfp-viewport-modal" onMouseDown={onClose}>
+      <section
+        className="modal cfp-income-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={isEditing ? "Edit expected expense" : "Add expected expense"}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <div className="modal-head">
           <div>
             <h2>{isEditing ? "Edit expected expense" : "Add expected expense"}</h2>
@@ -962,6 +1001,7 @@ function ExpectedExpenseModal({
           </button>
         </form>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }
