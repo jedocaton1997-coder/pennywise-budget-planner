@@ -1,0 +1,660 @@
+
+/* =========================================================
+   ACCOUNTS & CARDS — MODERN ANALYTICS REDESIGN
+   Works with the existing CreditCardManagement.tsx markup.
+   ========================================================= */
+
+.credit-wallet {
+  --ac-green: #168a5b;
+  --ac-green-dark: #0f6f48;
+  --ac-green-soft: #eaf7f0;
+  --ac-red: #ef534f;
+  --ac-red-soft: #fff0ee;
+  --ac-blue: #4a7acb;
+  --ac-ink: #102630;
+  --ac-muted: #6d7d82;
+  --ac-line: #dfe9e5;
+  --ac-surface: rgba(255, 255, 255, 0.94);
+  --ac-shadow: 0 12px 34px rgba(30, 71, 57, 0.075);
+
+  display: grid;
+  gap: 16px;
+  padding-bottom: 32px;
+  color: var(--ac-ink);
+  background:
+    radial-gradient(circle at 91% 4%, rgba(73, 206, 180, 0.13), transparent 24%),
+    radial-gradient(circle at 18% 10%, rgba(108, 179, 233, 0.08), transparent 24%);
+}
+
+.credit-wallet .fp-head {
+  margin-bottom: 2px;
+  padding: 4px 4px 0;
+}
+
+.credit-wallet .fp-head h2 {
+  margin: 0;
+  font-size: clamp(1.8rem, 2.5vw, 2.65rem);
+  line-height: 1.05;
+  letter-spacing: -0.045em;
+}
+
+.credit-wallet .fp-head p {
+  margin-top: 8px;
+  color: var(--ac-muted);
+}
+
+.credit-wallet .account-head-actions .primary {
+  min-height: 42px;
+  border-radius: 12px;
+  padding-inline: 18px;
+  box-shadow: 0 8px 18px rgba(22, 138, 91, 0.18);
+}
+
+/* Main cards */
+.credit-wallet .surface {
+  border: 1px solid var(--ac-line);
+  border-radius: 18px;
+  background: var(--ac-surface);
+  box-shadow: var(--ac-shadow);
+}
+
+/* =========================================================
+   NET WORTH / KPI STRIP
+   ========================================================= */
+
+.credit-wallet .net-worth-summary-card {
+  display: grid;
+  grid-template-columns: minmax(250px, 1.2fr) minmax(470px, 2.3fr) auto;
+  gap: 0;
+  align-items: stretch;
+  min-height: 124px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.credit-wallet .net-worth-main {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 22px 28px;
+  border-right: 1px solid var(--ac-line);
+}
+
+.credit-wallet .net-worth-main > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.credit-wallet .net-worth-main span,
+.credit-wallet .net-worth-breakdown small {
+  color: var(--ac-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.credit-wallet .net-worth-main strong {
+  margin: 8px 0 4px;
+  color: var(--ac-green);
+  font-size: clamp(1.7rem, 2.3vw, 2.3rem);
+  line-height: 1;
+}
+
+.credit-wallet .net-worth-main small {
+  color: var(--ac-muted);
+}
+
+.credit-wallet .net-worth-eye {
+  width: 26px;
+  height: 26px;
+  border: 0;
+  background: transparent;
+}
+
+.credit-wallet .net-worth-eye svg {
+  width: 16px;
+  height: 16px;
+}
+
+.credit-wallet .net-worth-breakdown {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(130px, 1fr));
+}
+
+.credit-wallet .net-worth-breakdown > span {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: 20px 24px;
+  border-right: 1px solid var(--ac-line);
+}
+
+.credit-wallet .net-worth-breakdown b {
+  font-size: 1.06rem;
+}
+
+.credit-wallet .net-worth-filter {
+  display: flex;
+  align-items: center;
+  align-self: center;
+  margin: 18px;
+  padding: 4px;
+  border: 1px solid var(--ac-line);
+  border-radius: 13px;
+  background: #f8fbfa;
+}
+
+.credit-wallet .net-worth-filter button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 10px;
+  padding: 0 14px;
+  background: transparent;
+  color: var(--ac-muted);
+}
+
+.credit-wallet .net-worth-filter button.active {
+  background: var(--ac-green);
+  color: #fff;
+  box-shadow: 0 5px 12px rgba(22, 138, 91, 0.22);
+}
+
+/* =========================================================
+   BANK / CARD TABS
+   ========================================================= */
+
+.credit-wallet .account-view-tabs {
+  display: inline-flex;
+  justify-self: start;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--ac-line);
+  border-radius: 13px;
+  background: #f7faf9;
+}
+
+.credit-wallet .account-view-tabs button {
+  min-height: 36px;
+  border: 0;
+  border-radius: 10px;
+  padding: 0 20px;
+  background: transparent;
+  color: var(--ac-muted);
+}
+
+.credit-wallet .account-view-tabs button.active {
+  background: #fff;
+  color: var(--ac-green-dark);
+  box-shadow: 0 3px 10px rgba(27, 64, 52, 0.08);
+}
+
+/* =========================================================
+   CARD / ACCOUNT CAROUSEL
+   ========================================================= */
+
+.credit-wallet .wallet-carousel {
+  position: relative;
+  margin-top: -2px;
+}
+
+.credit-wallet .wallet-card-strip {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  padding: 2px 40px 8px;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.credit-wallet .wallet-card-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.credit-wallet .wallet-card-strip > button {
+  position: relative;
+  flex: 0 0 238px;
+  min-height: 134px;
+  overflow: hidden;
+  padding: 18px;
+  border: 2px solid transparent;
+  border-radius: 17px;
+  color: var(--card-ink, #fff);
+  text-align: left;
+  scroll-snap-align: start;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--card-color) 92%, #fff), var(--card-color));
+  box-shadow: 0 10px 22px rgba(26, 50, 43, 0.12);
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.credit-wallet .wallet-card-strip > button::after {
+  position: absolute;
+  inset: auto -30px -50px auto;
+  width: 155px;
+  height: 155px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--card-ink, #fff) 9%, transparent);
+  content: "";
+}
+
+.credit-wallet .wallet-card-strip > button:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 16px 28px rgba(26, 50, 43, 0.17);
+}
+
+.credit-wallet .wallet-card-strip > button.selected {
+  border-color: #2aa975;
+  box-shadow:
+    0 0 0 3px rgba(42, 169, 117, 0.12),
+    0 16px 28px rgba(26, 50, 43, 0.17);
+}
+
+.credit-wallet .wallet-card-strip > button > span {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.credit-wallet .wallet-card-strip > button > b,
+.credit-wallet .wallet-card-strip > button > small,
+.credit-wallet .wallet-card-strip > button > strong,
+.credit-wallet .wallet-card-strip > button > em {
+  position: relative;
+  z-index: 1;
+  display: block;
+}
+
+.credit-wallet .wallet-card-strip > button > b {
+  margin-top: 11px;
+  font-size: 0.98rem;
+}
+
+.credit-wallet .wallet-card-strip > button > small {
+  margin-top: 3px;
+  color: color-mix(in srgb, var(--card-ink, #fff) 78%, transparent);
+}
+
+.credit-wallet .wallet-card-strip > button > strong {
+  margin-top: 17px;
+  font-size: 1.1rem;
+}
+
+.credit-wallet .wallet-card-strip > button > em {
+  position: absolute;
+  right: 13px;
+  bottom: 12px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card-ink, #fff) 15%, transparent);
+  color: var(--card-ink, #fff);
+  font-size: 0.65rem;
+  font-style: normal;
+}
+
+.credit-wallet .wallet-carousel-arrow {
+  z-index: 3;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--ac-line);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 5px 15px rgba(24, 54, 44, 0.1);
+}
+
+.credit-wallet .wallet-carousel-arrow.previous {
+  left: 0;
+}
+
+.credit-wallet .wallet-carousel-arrow.next {
+  right: 0;
+}
+
+/* =========================================================
+   SELECTED CARD / ACCOUNT HERO
+   ========================================================= */
+
+.credit-wallet .wallet-hero {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.74fr) minmax(540px, 1.55fr);
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.credit-wallet .wallet-card-identity {
+  position: relative;
+  min-height: 205px;
+  margin: 16px;
+  padding: 24px;
+  overflow: hidden;
+  border-radius: 17px;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--card-color) 91%, #fff), var(--card-color));
+  color: var(--card-ink, #fff);
+  box-shadow: 0 14px 28px rgba(25, 50, 42, 0.16);
+}
+
+.credit-wallet .wallet-card-identity::after {
+  position: absolute;
+  right: -72px;
+  bottom: -92px;
+  width: 260px;
+  height: 260px;
+  border: 1px solid color-mix(in srgb, var(--card-ink, #fff) 18%, transparent);
+  border-radius: 50%;
+  content: "";
+}
+
+.credit-wallet .wallet-card-identity > span {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 5px;
+  margin-top: 18px;
+}
+
+.credit-wallet .wallet-card-identity > span small,
+.credit-wallet .wallet-card-identity > span em {
+  color: color-mix(in srgb, var(--card-ink, #fff) 78%, transparent);
+}
+
+.credit-wallet .wallet-card-identity > span b {
+  font-size: 1.25rem;
+}
+
+.credit-wallet .credit-card-limits {
+  position: absolute;
+  right: 18px;
+  bottom: 16px;
+  left: 18px;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  overflow: hidden;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--card-ink, #fff) 14%, transparent);
+}
+
+.credit-wallet .credit-card-limits > span {
+  display: grid;
+  gap: 4px;
+  padding: 11px 14px;
+}
+
+.credit-wallet .credit-card-limits > span + span {
+  border-left: 1px solid color-mix(in srgb, var(--card-ink, #fff) 22%, transparent);
+}
+
+.credit-wallet .credit-card-limits small {
+  color: color-mix(in srgb, var(--card-ink, #fff) 76%, transparent);
+}
+
+.credit-wallet .statement-overview-inline {
+  border-left: 1px solid var(--ac-line);
+  background: #fff;
+}
+
+.credit-wallet .statement-overview-title {
+  min-height: 58px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--ac-line);
+}
+
+.credit-wallet .statement-overview-title > b {
+  font-size: 1rem;
+}
+
+.credit-wallet .statement-overview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.credit-wallet .statement-overview-actions button {
+  min-height: 34px !important;
+  height: 34px;
+  border-radius: 10px;
+}
+
+.credit-wallet .wallet-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(110px, 1fr));
+  gap: 0;
+  padding: 14px 16px 18px;
+}
+
+.credit-wallet .wallet-metrics > div {
+  display: grid;
+  gap: 6px;
+  min-height: 72px;
+  padding: 13px 16px;
+  border-right: 1px solid var(--ac-line);
+}
+
+.credit-wallet .wallet-metrics > div:last-child {
+  border-right: 0;
+}
+
+.credit-wallet .wallet-metrics span {
+  color: var(--ac-muted);
+  font-size: 0.72rem;
+}
+
+.credit-wallet .wallet-metrics b {
+  font-size: 1rem;
+}
+
+/* =========================================================
+   TRANSACTION HISTORY
+   ========================================================= */
+
+.credit-wallet .card-history {
+  overflow: hidden;
+  padding: 0;
+}
+
+.credit-wallet .card-history > .surface-title {
+  min-height: 58px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--ac-line);
+}
+
+.credit-wallet .card-history > .surface-title > b {
+  font-size: 1.1rem;
+}
+
+.credit-wallet .history-filters {
+  display: flex;
+  gap: 3px;
+  padding: 4px;
+  overflow-x: auto;
+  border: 1px solid var(--ac-line);
+  border-radius: 12px;
+  background: #f7faf9;
+}
+
+.credit-wallet .history-filters button {
+  min-height: 30px;
+  border: 0;
+  border-radius: 9px;
+  padding: 0 13px;
+  background: transparent;
+  color: var(--ac-muted);
+  white-space: nowrap;
+}
+
+.credit-wallet .history-filters button.active {
+  background: var(--ac-green);
+  color: #fff;
+}
+
+.credit-wallet .history-head,
+.credit-wallet .account-statement-head {
+  background: #fafcfb;
+  color: var(--ac-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.credit-wallet .history-head {
+  padding: 12px 18px;
+}
+
+.credit-wallet .transaction-cycle,
+.credit-wallet .account-transaction-period {
+  margin: 10px;
+  overflow: hidden;
+  border: 1px solid var(--ac-line);
+  border-radius: 14px;
+}
+
+.credit-wallet .transaction-row,
+.credit-wallet .account-statement-row {
+  min-height: 62px;
+  border-top: 1px solid #edf2f0;
+  transition: background 120ms ease;
+}
+
+.credit-wallet .transaction-row:hover,
+.credit-wallet .account-statement-row:hover {
+  background: #f7fbf9;
+}
+
+/* =========================================================
+   STATUS & BUTTON TUNING
+   ========================================================= */
+
+.credit-wallet .statement-status,
+.credit-wallet .estimated {
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 0.68rem;
+}
+
+.credit-wallet .statement-status.upcoming,
+.credit-wallet .statement-status.due-soon {
+  background: #fff3dd;
+  color: #b86c12;
+}
+
+.credit-wallet .statement-status.paid,
+.credit-wallet .statement-status.no-payment-due {
+  background: var(--ac-green-soft);
+  color: var(--ac-green-dark);
+}
+
+.credit-wallet button.primary {
+  background: var(--ac-green);
+}
+
+.credit-wallet button.primary:hover {
+  background: var(--ac-green-dark);
+}
+
+/* =========================================================
+   RESPONSIVE
+   ========================================================= */
+
+@media (max-width: 1180px) {
+  .credit-wallet .net-worth-summary-card {
+    grid-template-columns: 1fr;
+  }
+
+  .credit-wallet .net-worth-main {
+    border-right: 0;
+    border-bottom: 1px solid var(--ac-line);
+  }
+
+  .credit-wallet .net-worth-filter {
+    justify-self: start;
+  }
+
+  .credit-wallet .wallet-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .credit-wallet .statement-overview-inline {
+    border-top: 1px solid var(--ac-line);
+    border-left: 0;
+  }
+}
+
+@media (max-width: 820px) {
+  .credit-wallet .net-worth-breakdown {
+    grid-template-columns: 1fr;
+  }
+
+  .credit-wallet .net-worth-breakdown > span {
+    border-right: 0;
+    border-bottom: 1px solid var(--ac-line);
+  }
+
+  .credit-wallet .wallet-card-strip {
+    padding-inline: 36px;
+  }
+
+  .credit-wallet .wallet-card-strip > button {
+    flex-basis: 218px;
+  }
+
+  .credit-wallet .wallet-metrics {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+
+  .credit-wallet .wallet-metrics > div:nth-child(2) {
+    border-right: 0;
+  }
+
+  .credit-wallet .wallet-metrics > div:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--ac-line);
+  }
+
+  .credit-wallet .statement-overview-title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .credit-wallet .statement-overview-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 560px) {
+  .credit-wallet .fp-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .credit-wallet .account-view-tabs {
+    width: 100%;
+  }
+
+  .credit-wallet .account-view-tabs button {
+    flex: 1;
+  }
+
+  .credit-wallet .wallet-card-identity {
+    min-height: 230px;
+  }
+
+  .credit-wallet .wallet-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .credit-wallet .wallet-metrics > div {
+    border-right: 0;
+    border-bottom: 1px solid var(--ac-line);
+  }
+
+  .credit-wallet .wallet-metrics > div:last-child {
+    border-bottom: 0;
+  }
+}
