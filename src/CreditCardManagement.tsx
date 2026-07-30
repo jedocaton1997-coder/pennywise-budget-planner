@@ -513,8 +513,8 @@ export default function CreditCardManagement({ onNotice }: Props) {
         payments={payments}
         selectedAccountId={selectedAccountId}
         selectedCardId={selectedId}
-        onSelectAccount={setSelectedAccountId}
-        onSelectCard={setSelectedId}
+        onSelectAccount={(id) => setSelectedAccountId(Number(id))}
+        onSelectCard={(id) => setSelectedId(Number(id))}
         hideBalances={hideNetWorth}
         onAddBankAccount={() => setModal("account")}
         onAddCreditCard={() => setModal("card")}
