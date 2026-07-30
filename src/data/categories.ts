@@ -1,0 +1,25 @@
+import {useEffect,useState} from 'react'
+import {doc,onSnapshot,setDoc} from 'firebase/firestore'
+import {firebaseAuth,firestore} from '../lib/firebase'
+
+export type FinanceSubcategory={name:string;icon:string;image?:string}
+export type FinanceCategory={name:string;icon:string;image?:string;subcategories?:FinanceSubcategory[]}
+type CategoryStore={categories:FinanceCategory[];deletedNames:string[]}
+
+export const defaultCategories:FinanceCategory[]=[{name:'Food',icon:'🍴',subcategories:[{name:'Food Delivery',icon:'🛵'},{name:'Groceries',icon:'🛒'},{name:'Dining Out',icon:'🍽️'},{name:'Coffee',icon:'☕'}]},{name:'Transportation',icon:'🚗',subcategories:[{name:'Fuel',icon:'⛽'},{name:'Public Transit',icon:'🚌'},{name:'Ride-hailing',icon:'🚕'},{name:'Parking',icon:'🅿️'}]},{name:'Housing',icon:'🏠',subcategories:[{name:'Rent or Mortgage',icon:'🏡'},{name:'Repairs',icon:'🛠️'},{name:'Condo Dues',icon:'🏢'}]},{name:'Utilities',icon:'💡',subcategories:[{name:'Electricity',icon:'⚡'},{name:'Water',icon:'💧'},{name:'Internet',icon:'🌐'},{name:'Mobile Phone',icon:'📱'}]},{name:'Subscriptions',icon:'🔁'},{name:'Shopping',icon:'🛍️'},{name:'Medical',icon:'🩺'},{name:'Education',icon:'🎓'},{name:'Entertainment',icon:'🎬'},{name:'Personal Care',icon:'✨'},{name:'Savings',icon:'🐷'},{name:'Debt Payment',icon:'🏦'},{name:'Credit Card',icon:'💳'},{name:'Income',icon:'💰'},{name:'Other',icon:'📌'}]
+
+const key='pennywise-categories'
+const normalizeStore=(raw:unknown):CategoryStore=>Array.isArray(raw)?{categories:raw as FinanceCategory[],deletedNames:[]}:{categories:(raw as Partial<CategoryStore>)?.categories??[],deletedNames:(raw as Partial<CategoryStore>)?.deletedNames??[]}
+const readStore=():CategoryStore=>{try{return normalizeStore(JSON.parse(localStorage.getItem(key)||'[]'))}catch{return{categories:[],deletedNames:[]}}}
+const mergeCategories=(store:CategoryStore)=>[...defaultCategories.filter(item=>!store.deletedNames.includes(item.name)).map(item=>store.categories.find(saved=>saved.name===item.name)??item),...store.categories.filter(item=>!defaultCategories.some(defaultItem=>defaultItem.name===item.name)&&!store.deletedNames.includes(item.name))]
+const saveStore=(store:CategoryStore)=>{localStorage.setItem(key,JSON.stringify(store));const user=firebaseAuth.currentUser;if(user)void setDoc(doc(firestore,'users',user.uid,'appData','categories'),{value:store.categories,deletedNames:store.deletedNames,updatedAt:new Date().toISOString()});window.dispatchEvent(new Event('pennywise-categories'))}
+
+export function getCategories():FinanceCategory[]{return mergeCategories(readStore())}
+export function addCategory(category:FinanceCategory){const store=readStore();saveStore({categories:[...store.categories.filter(item=>item.name!==category.name),category],deletedNames:store.deletedNames.filter(name=>name!==category.name)})}
+export function updateCategory(previousName:string,category:FinanceCategory){const current=getCategories().find(item=>item.name===previousName),store=readStore(),next={...category,subcategories:category.subcategories??current?.subcategories??[]};saveStore({categories:[...store.categories.filter(item=>item.name!==previousName&&item.name!==category.name),next],deletedNames:[...store.deletedNames.filter(name=>name!==category.name),...(previousName!==category.name?[previousName]:[])]})}
+export function deleteCategory(name:string){const store=readStore();saveStore({categories:store.categories.filter(item=>item.name!==name),deletedNames:[...new Set([...store.deletedNames,name])]})}
+export function addSubcategory(parentName:string,subcategory:FinanceSubcategory){const parent=getCategories().find(category=>category.name===parentName);if(parent)addCategory({...parent,subcategories:[...(parent.subcategories??[]).filter(item=>item.name!==subcategory.name),subcategory]})}
+export function updateSubcategory(parentName:string,previousName:string,subcategory:FinanceSubcategory){const parent=getCategories().find(category=>category.name===parentName);if(parent)addCategory({...parent,subcategories:[...(parent.subcategories??[]).filter(item=>item.name!==previousName&&item.name!==subcategory.name),subcategory]})}
+export function deleteSubcategory(parentName:string,name:string){const parent=getCategories().find(category=>category.name===parentName);if(parent)addCategory({...parent,subcategories:(parent.subcategories??[]).filter(item=>item.name!==name)})}
+export function useCategories(){const[categories,setCategories]=useState<FinanceCategory[]>(()=>getCategories());useEffect(()=>{const sync=()=>setCategories(getCategories());window.addEventListener('pennywise-categories',sync);const user=firebaseAuth.currentUser;const stop=user?onSnapshot(doc(firestore,'users',user.uid,'appData','categories'),snapshot=>{if(!snapshot.exists())return;const data=snapshot.data();localStorage.setItem(key,JSON.stringify({categories:data.value??[],deletedNames:data.deletedNames??[]}));setCategories(getCategories())}):undefined;return()=>{window.removeEventListener('pennywise-categories',sync);stop?.()}},[]);return categories}
+export const categoryLabel=(category:FinanceCategory)=>`${category.image?'':`${category.icon} `}${category.name}`

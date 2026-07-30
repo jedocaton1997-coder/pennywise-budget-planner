@@ -1,0 +1,315 @@
+.bank-logo {
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.bank-logo img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center;
+  background: transparent;
+}
+
+.bank-logo--small,
+.bank-logo--medium,
+.bank-logo--large { width: 48px; height: 48px; min-width: 48px; }
+
+/* User-provided images commonly contain a baked-in white canvas. The shared
+   circular mask crops that canvas consistently without changing aspect ratio. */
+.bank-logo--custom { background: transparent; }
+
+.bank-logo--fallback {
+  color: #52645b;
+  background: #e8eeeb;
+}
+
+.bank-logo--fallback svg {
+  width: 22px;
+  height: 22px;
+}
+
+.bank-autocomplete {
+  position: relative;
+}
+
+.bank-autocomplete__input-wrapper {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 5px 12px;
+  border: 1px solid #cfd5dd;
+  border-radius: 11px;
+  background: #ffffff;
+}
+
+.bank-autocomplete__input-wrapper:focus-within {
+  border-color: #217346;
+  box-shadow: 0 0 0 3px rgb(33 115 70 / 12%);
+}
+
+.bank-autocomplete__input-wrapper input {
+  min-width: 0;
+  flex: 1;
+  border: 0 !important;
+  outline: 0;
+  box-shadow: none !important;
+  padding-inline: 2px !important;
+  background: transparent;
+}
+
+.bank-autocomplete__menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% - 10px);
+  right: 0;
+  left: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 7px;
+  border: 1px solid #dfe3e8;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 18px 45px rgb(15 23 42 / 16%);
+}
+
+.bank-autocomplete__option {
+  width: 100%;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  border: 0;
+  border-radius: 9px;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+}
+
+.bank-autocomplete__option:hover,
+.bank-autocomplete__option--highlighted {
+  background: #f1f6f3;
+}
+
+.bank-autocomplete__option-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bank-autocomplete__option-copy strong {
+  font-size: 0.9rem;
+}
+
+.bank-autocomplete__option-copy small {
+  overflow: hidden;
+  color: #667085;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.credit-card-wallet {
+  width: min(1280px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: 48px 0 80px;
+  color: #17212b;
+}
+
+.credit-card-wallet .wallet-header {
+  margin-bottom: 32px;
+}
+
+.credit-card-wallet .wallet-header h1,
+.credit-card-wallet .section-heading h2,
+.credit-card-wallet .credit-card-form h2 {
+  margin: 0;
+}
+
+.credit-card-wallet .wallet-header h1 {
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+}
+
+.credit-card-wallet .wallet-header p,
+.credit-card-wallet .section-heading p,
+.credit-card-wallet .credit-card-form__heading p {
+  margin: 8px 0 0;
+  color: #667085;
+  line-height: 1.6;
+}
+
+.credit-card-wallet .wallet-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 24px;
+  align-items: start;
+}
+
+.credit-card-wallet .card-list-section,
+.credit-card-wallet .credit-card-form {
+  border: 1px solid #e2e5e9;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 12px 32px rgb(15 23 42 / 6%);
+}
+
+.credit-card-wallet .card-list-section,
+.credit-card-wallet .credit-card-form {
+  padding: 24px;
+}
+
+.credit-card-wallet .section-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: flex-start;
+  margin-bottom: 24px;
+}
+
+.credit-card-wallet .card-count {
+  flex: 0 0 auto;
+  padding: 7px 11px;
+  border-radius: 999px;
+  color: #216e43;
+  background: #eaf6ee;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.credit-card-wallet .credit-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.credit-card-wallet .credit-card-tile {
+  min-height: 170px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 20px;
+  border-radius: 16px;
+  color: #ffffff;
+  background: radial-gradient(circle at top right, rgb(255 255 255 / 20%), transparent 38%), linear-gradient(145deg, #173f7a, #102b59);
+  box-shadow: 0 14px 28px rgb(23 63 122 / 20%);
+}
+
+.credit-card-wallet .credit-card-tile__top,
+.credit-card-wallet .credit-card-form__heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+
+.credit-card-wallet .credit-card-form__heading {
+  align-items: flex-start;
+  margin-bottom: 24px;
+}
+
+.credit-card-wallet .credit-card-tile__top > span {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.credit-card-wallet .credit-card-tile h3 {
+  margin: 0 0 5px;
+  font-size: 1.08rem;
+}
+
+.credit-card-wallet .credit-card-tile p {
+  margin: 0;
+  color: rgb(255 255 255 / 76%);
+  font-size: 0.9rem;
+}
+
+.credit-card-wallet .form-field,
+.credit-card-wallet .bank-autocomplete {
+  margin-bottom: 18px;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 8px;
+  color: #344054;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.credit-card-wallet .form-field input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid #cfd5dd;
+  border-radius: 11px;
+  outline: none;
+  background: #ffffff;
+}
+
+.credit-card-wallet .form-field input:focus {
+  border-color: #217346;
+  box-shadow: 0 0 0 3px rgb(33 115 70 / 12%);
+}
+
+.form-error {
+  margin-bottom: 16px;
+  padding: 11px 13px;
+  border: 1px solid #f4c7c3;
+  border-radius: 10px;
+  color: #9d1c15;
+  background: #fff2f1;
+  font-size: 0.88rem;
+}
+
+.primary-button {
+  width: 100%;
+  min-height: 48px;
+  border: 0;
+  border-radius: 10px;
+  color: #ffffff;
+  background: #187840;
+  font-weight: 800;
+  box-shadow: 0 7px 16px rgb(24 120 64 / 18%);
+}
+
+.primary-button:hover { background: #126534; }
+.primary-button:focus-visible { outline: 3px solid rgb(24 120 64 / 25%); outline-offset: 2px; }
+
+.saved-card-list { display: grid; gap: 7px; margin-top: 12px; }
+.saved-card-list > div { display: flex; align-items: center; gap: 9px; padding: 9px; border: 1px solid var(--border); border-radius: 8px; }
+.saved-card-list span { display: grid; }
+.saved-card-list small { color: var(--muted); }
+.payment-card-field > span { display: flex; align-items: center; gap: 8px; }
+.payment-card-field > span input { flex: 1; }
+
+@media (max-width: 920px) {
+  .credit-card-wallet .wallet-layout { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 560px) {
+  .credit-card-wallet { width: min(100% - 24px, 1280px); padding-top: 28px; }
+  .credit-card-wallet .card-list-section,
+  .credit-card-wallet .credit-card-form { padding: 18px; border-radius: 14px; }
+  .credit-card-wallet .section-heading { align-items: center; }
+  .credit-card-wallet .credit-card-grid { grid-template-columns: 1fr; }
+}
