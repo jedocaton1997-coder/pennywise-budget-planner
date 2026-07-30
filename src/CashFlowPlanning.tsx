@@ -532,7 +532,6 @@ export default function CashFlowPlanning() {
               return;
             }
 
-            // Fallback for expected-income rows that came from the planning collection.
             const plannedIncome = planned.find(
               (row) =>
                 row.type === "Income" &&
@@ -729,7 +728,6 @@ function FlowPlanningPanel({
   const runAction = (label: string, item: FlowItem) => {
     closeActionMenu();
 
-    // Let the menu close first, then open the edit form or perform the action.
     window.setTimeout(() => {
       if (label === "Edit") onEdit?.(item);
       if (label === "Delete") onDelete?.(item);
@@ -775,10 +773,11 @@ function FlowPlanningPanel({
 
                   const rect = event.currentTarget.getBoundingClientRect();
                   const menuWidth = 220;
-                  const viewportPadding = 12;
+                  const padding = 12;
+
                   const left = Math.min(
-                    window.innerWidth - menuWidth - viewportPadding,
-                    Math.max(viewportPadding, rect.right - menuWidth),
+                    window.innerWidth - menuWidth - padding,
+                    Math.max(padding, rect.right - menuWidth),
                   );
 
                   setMenuPosition({
@@ -798,36 +797,69 @@ function FlowPlanningPanel({
         <>
           <button
             type="button"
-            className="cfp-menu-clickaway"
             aria-label="Close actions"
             onClick={closeActionMenu}
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 9998,
+              border: 0,
+              padding: 0,
+              background: "transparent",
+              cursor: "default",
+            }}
           />
+
           <div
-            className="cfp-action-dropdown"
             role="menu"
             aria-label={`Actions for ${openActionItem.title}`}
+            onClick={(event) => event.stopPropagation()}
             style={{
+              position: "fixed",
               top: menuPosition.top,
               left: menuPosition.left,
+              zIndex: 9999,
+              width: 220,
+              padding: 10,
+              border: "1px solid #e2e9e6",
+              borderRadius: 20,
+              background: "#ffffff",
+              boxShadow:
+                "0 18px 40px rgba(16, 44, 34, 0.14), 0 3px 10px rgba(16, 44, 34, 0.08)",
             }}
-            onClick={(event) => event.stopPropagation()}
           >
-            {actionLabels.map((label) => (
+            {actionLabels.map((label, index) => (
               <button
                 key={label}
                 type="button"
                 role="menuitem"
-                className={[
-                  "cfp-action-option",
-                  label === "Delete" ? "danger" : "",
-                  label.includes("Mark") ? "complete" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
                 onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
                   runAction(label, openActionItem);
+                }}
+                style={{
+                  display: "flex",
+                  width: "100%",
+                  minHeight: 52,
+                  alignItems: "center",
+                  justifyContent: "flex-start",
+                  padding: "0 16px",
+                  border: 0,
+                  borderRadius: 14,
+                  background: index === 0 ? "#eff8f3" : "transparent",
+                  color:
+                    label === "Delete"
+                      ? "#d6433a"
+                      : index === 0 || label.includes("Mark")
+                        ? "#16875d"
+                        : "#24372f",
+                  font: "inherit",
+                  fontSize: 16,
+                  fontWeight: 500,
+                  lineHeight: 1,
+                  textAlign: "left",
+                  cursor: "pointer",
                 }}
               >
                 {label}
