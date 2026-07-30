@@ -142,8 +142,6 @@ const currentSemiMonthlyWindows = () => {
 const followingExpenseWindow = (incomeEndValue: string) => {
   const incomeEndDate = parseLocal(incomeEndValue);
 
-  // Income ending on or before the 15th:
-  // expenses cover the 16th through the last day of the same month.
   if (incomeEndDate.getDate() <= 15) {
     const start = new Date(
       incomeEndDate.getFullYear(),
@@ -157,15 +155,9 @@ const followingExpenseWindow = (incomeEndValue: string) => {
       0,
       12,
     );
-
-    return {
-      start: iso(start),
-      end: iso(end),
-    };
+    return { start: iso(start), end: iso(end) };
   }
 
-  // Income ending after the 15th:
-  // expenses cover the 1st through the 15th of the next month.
   const start = new Date(
     incomeEndDate.getFullYear(),
     incomeEndDate.getMonth() + 1,
@@ -178,11 +170,7 @@ const followingExpenseWindow = (incomeEndValue: string) => {
     15,
     12,
   );
-
-  return {
-    start: iso(start),
-    end: iso(end),
-  };
+  return { start: iso(start), end: iso(end) };
 };
 
 const formatDate = (value: string) =>
@@ -204,15 +192,35 @@ const isSubscription = (category = "", name = "") => /subscription|netflix|spoti
 const normalized = (value = "") => value.toLowerCase().replace(/\s+/g, " ").trim();
 
 const frequencyStep = (frequency = ""): { days?: number; months?: number } | null => {
-  const value = frequency.toLowerCase().trim();
-  if (!value || value === "one-time" || value === "one time") return null;
-  if (value === "weekly") return { days: 7 };
-  if (value === "every two weeks" || value === "biweekly") return { days: 14 };
-  if (value === "monthly") return { months: 1 };
-  if (value === "every two months") return { months: 2 };
-  if (value === "quarterly") return { months: 3 };
-  if (value === "semiannually" || value === "semi-annually") return { months: 6 };
-  if (value === "annually" || value === "yearly") return { months: 12 };
+  const value = frequency
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!value || value === "one time" || value === "one-time") return null;
+  if (value === "weekly" || value === "every week") return { days: 7 };
+  if (
+    value === "every two weeks" ||
+    value === "every 2 weeks" ||
+    value === "biweekly" ||
+    value === "bi weekly"
+  ) {
+    return { days: 14 };
+  }
+  if (value === "monthly" || value === "every month") return { months: 1 };
+  if (value === "every two months" || value === "every 2 months") return { months: 2 };
+  if (value === "quarterly" || value === "every three months") return { months: 3 };
+  if (
+    value === "semiannually" ||
+    value === "semi annually" ||
+    value === "every six months"
+  ) {
+    return { months: 6 };
+  }
+  if (value === "annually" || value === "yearly" || value === "every year") {
+    return { months: 12 };
+  }
   return null;
 };
 
@@ -277,12 +285,15 @@ export default function CashFlowPlanning() {
   const [addingIncome, setAddingIncome] = useState(false);
   const [addingExpense, setAddingExpense] = useState(false);
   const [editingIncome, setEditingIncome] = useState<IncomeRecord | null>(null);
+  const [editingIncomePlannedId, setEditingIncomePlannedId] = useState<number | null>(null);
   const [editingExpense, setEditingExpense] = useState<PlannedRecord | null>(null);
 
   const [bills, setBills] = useFirestoreState<BillRecord[]>("bills", []);
   const [income, setIncome] = useFirestoreState<IncomeRecord[]>("income", []);
   const [planned, setPlanned] = useFirestoreState<PlannedRecord[]>("planning", []);
   const [plannedPayments, setPlannedPayments] = useFirestoreState<PlannedRecord[]>("plannedPayments", []);
+  const [receivedIncomeOccurrences, setReceivedIncomeOccurrences] =
+    useFirestoreState<string[]>("cashFlowReceivedIncomeOccurrences", []);
   const [savingsGoals] = useFirestoreState<string[][]>("savingsGoals", []);
   const [budgets] = useFirestoreState<CategoryBudget[]>("budgets", []);
   const [wallet] = useWalletSnapshot<WalletShape>({ accounts: [], cards: [], accountTransactions: [], transactions: [] });
@@ -292,27 +303,34 @@ export default function CashFlowPlanning() {
       ...income
         .filter((item) => !statusIsInactive(item.status || ""))
         .flatMap((item) =>
-          recurringDates(item.expectedDate, item.frequency, incomeStart, incomeEnd).map((date) => ({
-            id: `income-${item.id}-${date}`,
-            incomeRecordId: item.id,
-            title: item.source,
-            category: item.category || item.type || "Income",
-            date,
-            amount: Number(item.amount || 0),
-            source: "Income" as const,
-          })),
+          recurringDates(item.expectedDate, item.frequency, incomeStart, incomeEnd)
+            .map((date) => ({
+              id: `income-${item.id}-${date}`,
+              incomeRecordId: item.id,
+              title: item.source,
+              category: item.category || item.type || "Income",
+              date,
+              amount: Number(item.amount || 0),
+              source: "Income" as const,
+            }))
+            .filter((occurrence) => !receivedIncomeOccurrences.includes(occurrence.id)),
         ),
       ...planned
         .filter((item) => !item.archived && item.type === "Income" && !statusIsInactive(item.status || ""))
-        .filter((item) => inRange(item.date || item.expectedDate || item.dueDate || "", incomeStart, incomeEnd))
-        .map((item) => ({
-          id: `planned-income-${item.id}`,
-          title: item.name,
-          category: item.category || "Expected income",
-          date: item.date || item.expectedDate || item.dueDate || "",
-          amount: Number(item.amount || 0),
-          source: "Income" as const,
-        })),
+        .flatMap((item) => {
+          const baseDate = item.date || item.expectedDate || item.dueDate || "";
+          return recurringDates(baseDate, item.frequency, incomeStart, incomeEnd)
+            .map((date) => ({
+              id: `planned-income-${item.id}-${date}`,
+              plannedRecordId: item.id,
+              title: item.name,
+              category: item.category || "Expected income",
+              date,
+              amount: Number(item.amount || 0),
+              source: "Income" as const,
+            }))
+            .filter((occurrence) => !receivedIncomeOccurrences.includes(occurrence.id));
+        }),
     ];
 
     const billItems: FlowItem[] = bills
@@ -452,7 +470,20 @@ export default function CashFlowPlanning() {
       actualIncome: total(actualIncomeItems),
       incomeComparisonRows: incomeComparisonRows.sort((a, b) => a.date.localeCompare(b.date)),
     };
-  }, [bills, budgets, expenseEnd, expenseStart, income, incomeEnd, incomeStart, planned, plannedPayments, savingsGoals, wallet]);
+  }, [
+    bills,
+    budgets,
+    expenseEnd,
+    expenseStart,
+    income,
+    incomeEnd,
+    incomeStart,
+    planned,
+    plannedPayments,
+    receivedIncomeOccurrences,
+    savingsGoals,
+    wallet,
+  ]);
 
   const expectedExpenses = total(flow.outflowItems);
   const netExpected = flow.expectedIncome - expectedExpenses;
@@ -462,9 +493,9 @@ export default function CashFlowPlanning() {
     setIncomeStart(start);
     setIncomeEnd(end);
 
-    const nextExpenseWindow = followingExpenseWindow(end);
-    setExpenseStart(nextExpenseWindow.start);
-    setExpenseEnd(nextExpenseWindow.end);
+    const expenseWindow = followingExpenseWindow(end);
+    setExpenseStart(expenseWindow.start);
+    setExpenseEnd(expenseWindow.end);
   };
   const movePeriod = (direction: -1 | 1) => {
     const start = parseLocal(incomeStart);
@@ -492,17 +523,108 @@ export default function CashFlowPlanning() {
     }
   };
   const duplicateIncome = (item: FlowItem) => {
-    const source = item.incomeRecordId ? income.find((row) => String(row.id) === String(item.incomeRecordId)) : null;
-    if (!source) return;
-    setIncome((current) => [{ ...source, id: Date.now(), source: `${source.source} copy` }, ...current]);
+    if (item.incomeRecordId !== undefined) {
+      const source = income.find(
+        (row) => String(row.id) === String(item.incomeRecordId),
+      );
+      if (!source) return;
+
+      setIncome((current) => [
+        {
+          ...source,
+          id: Date.now(),
+          source: `${source.source} copy`,
+          status: "Expected",
+        },
+        ...current,
+      ]);
+      return;
+    }
+
+    if (item.plannedRecordId !== undefined) {
+      const source = planned.find((row) => row.id === item.plannedRecordId);
+      if (!source) return;
+
+      setPlanned((current) => [
+        {
+          ...source,
+          id: Date.now(),
+          name: `${source.name} copy`,
+          status: "Expected",
+          archived: false,
+        },
+        ...current,
+      ]);
+    }
   };
+
   const deleteIncome = (item: FlowItem) => {
-    if (!item.incomeRecordId) return;
-    setIncome((current) => current.filter((row) => String(row.id) !== String(item.incomeRecordId)));
+    if (item.incomeRecordId !== undefined) {
+      setIncome((current) =>
+        current.filter(
+          (row) => String(row.id) !== String(item.incomeRecordId),
+        ),
+      );
+      setReceivedIncomeOccurrences((current) =>
+        current.filter(
+          (occurrenceId) =>
+            !occurrenceId.startsWith(`income-${item.incomeRecordId}-`),
+        ),
+      );
+      return;
+    }
+
+    if (item.plannedRecordId !== undefined) {
+      setPlanned((current) =>
+        current.filter((row) => row.id !== item.plannedRecordId),
+      );
+      setReceivedIncomeOccurrences((current) =>
+        current.filter(
+          (occurrenceId) =>
+            !occurrenceId.startsWith(
+              `planned-income-${item.plannedRecordId}-`,
+            ),
+        ),
+      );
+    }
   };
+
   const markIncomeReceived = (item: FlowItem) => {
-    if (!item.incomeRecordId) return;
-    setIncome((current) => current.map((row) => (String(row.id) === String(item.incomeRecordId) ? { ...row, status: "Received" } : row)));
+    // Mark only this displayed occurrence as received. This preserves all
+    // future dates for weekly, biweekly, monthly, and other recurring income.
+    setReceivedIncomeOccurrences((current) =>
+      current.includes(item.id) ? current : [...current, item.id],
+    );
+
+    // For one-time income, also update the source record's status.
+    if (item.incomeRecordId !== undefined) {
+      const source = income.find(
+        (row) => String(row.id) === String(item.incomeRecordId),
+      );
+      if (!frequencyStep(source?.frequency || "")) {
+        setIncome((current) =>
+          current.map((row) =>
+            String(row.id) === String(item.incomeRecordId)
+              ? { ...row, status: "Received" }
+              : row,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (item.plannedRecordId !== undefined) {
+      const source = planned.find((row) => row.id === item.plannedRecordId);
+      if (!frequencyStep(source?.frequency || "")) {
+        setPlanned((current) =>
+          current.map((row) =>
+            row.id === item.plannedRecordId
+              ? { ...row, status: "Received" }
+              : row,
+          ),
+        );
+      }
+    }
   };
   const findExpenseRecord = (item: FlowItem) => {
     if (item.plannedRecordId) return { collection: "planning" as const, record: planned.find((row) => row.id === item.plannedRecordId) ?? null };
@@ -572,37 +694,38 @@ export default function CashFlowPlanning() {
           breakdown={incomeBreakdown}
           onAdd={() => setAddingIncome(true)}
           onEdit={(item) => {
-            const record = item.incomeRecordId
-              ? income.find((row) => String(row.id) === String(item.incomeRecordId))
-              : null;
-
-            if (record) {
-              setEditingIncome(record);
+            if (item.incomeRecordId !== undefined) {
+              const record = income.find(
+                (row) => String(row.id) === String(item.incomeRecordId),
+              );
+              if (record) {
+                setEditingIncomePlannedId(null);
+                setEditingIncome(record);
+              }
               return;
             }
 
-            const plannedIncome = planned.find(
-              (row) =>
-                row.type === "Income" &&
-                row.name === item.title &&
-                (row.date || row.expectedDate || row.dueDate || "") === item.date,
-            );
-
-            if (plannedIncome) {
-              setEditingIncome({
-                id: plannedIncome.id,
-                source: plannedIncome.name,
-                type: "Other",
-                category: plannedIncome.category || "Income",
-                amount: plannedIncome.amount,
-                expectedDate:
-                  plannedIncome.date ||
-                  plannedIncome.expectedDate ||
-                  plannedIncome.dueDate ||
-                  incomeStart,
-                frequency: plannedIncome.frequency || "One-time",
-                status: plannedIncome.status || "Expected",
-              });
+            if (item.plannedRecordId !== undefined) {
+              const record = planned.find(
+                (row) => row.id === item.plannedRecordId,
+              );
+              if (record) {
+                setEditingIncomePlannedId(record.id);
+                setEditingIncome({
+                  id: record.id,
+                  source: record.name,
+                  type: "Other",
+                  category: record.category || "Income",
+                  amount: record.amount,
+                  expectedDate:
+                    record.date ||
+                    record.expectedDate ||
+                    record.dueDate ||
+                    incomeStart,
+                  frequency: record.frequency || "One-time",
+                  status: record.status || "Expected",
+                });
+              }
             }
           }}
           onDelete={deleteIncome}
@@ -655,10 +778,37 @@ export default function CashFlowPlanning() {
           defaultDate={incomeStart}
           accounts={wallet.accounts ?? []}
           income={editingIncome}
-          onClose={() => setEditingIncome(null)}
-          onSave={(record) => {
-            setIncome((current) => current.map((item) => (String(item.id) === String(record.id) ? record : item)));
+          onClose={() => {
             setEditingIncome(null);
+            setEditingIncomePlannedId(null);
+          }}
+          onSave={(record) => {
+            if (editingIncomePlannedId !== null) {
+              setPlanned((current) =>
+                current.map((item) =>
+                  item.id === editingIncomePlannedId
+                    ? {
+                        ...item,
+                        name: record.source,
+                        category: record.category,
+                        amount: record.amount,
+                        date: record.expectedDate,
+                        expectedDate: record.expectedDate,
+                        frequency: record.frequency,
+                        status: record.status,
+                      }
+                    : item,
+                ),
+              );
+            } else {
+              setIncome((current) =>
+                current.map((item) =>
+                  String(item.id) === String(record.id) ? record : item,
+                ),
+              );
+            }
+            setEditingIncome(null);
+            setEditingIncomePlannedId(null);
           }}
         />
       )}
@@ -776,7 +926,6 @@ function FlowPlanningPanel({
 
   const runAction = (label: string, item: FlowItem) => {
     closeActionMenu();
-
     window.setTimeout(() => {
       if (label === "Edit") onEdit?.(item);
       if (label === "Delete") onDelete?.(item);
@@ -828,10 +977,7 @@ function FlowPlanningPanel({
           >
             <FlowDateCard value={item.date} />
             <span className="cfp-plan-source"><CategoryIcon value={item.category} /><span><b>{tone === "income" ? item.category : categoryBase(item.category)}</b></span></span>
-            <span className="cfp-plan-desc">
-              {item.title}
-              <small>{item.source}</small>
-            </span>
+            <span className="cfp-plan-desc">{item.title}<small>{item.source}</small></span>
             <strong>{money(item.amount)}</strong>
             <span className="cfp-action-cell">
               <button
@@ -846,7 +992,6 @@ function FlowPlanningPanel({
                   const rect = event.currentTarget.getBoundingClientRect();
                   const menuWidth = 220;
                   const padding = 12;
-
                   const left = Math.min(
                     window.innerWidth - menuWidth - padding,
                     Math.max(padding, rect.right - menuWidth),
@@ -880,14 +1025,11 @@ function FlowPlanningPanel({
                 border: 0,
                 padding: 0,
                 background: "transparent",
-                cursor: "default",
               }}
             />
-
             <div
               role="menu"
               aria-label={`Actions for ${openActionItem.title}`}
-              onClick={(event) => event.stopPropagation()}
               style={{
                 position: "fixed",
                 top: menuPosition.top,
@@ -899,8 +1041,9 @@ function FlowPlanningPanel({
                 borderRadius: 20,
                 background: "#ffffff",
                 boxShadow:
-                  "0 18px 40px rgba(16, 44, 34, 0.14), 0 3px 10px rgba(16, 44, 34, 0.08)",
+                  "0 18px 40px rgba(16,44,34,.14), 0 3px 10px rgba(16,44,34,.08)",
               }}
+              onClick={(event) => event.stopPropagation()}
             >
               {actionLabels.map((label, index) => (
                 <button
@@ -915,9 +1058,8 @@ function FlowPlanningPanel({
                   style={{
                     display: "flex",
                     width: "100%",
-                    minHeight: 52,
+                    minHeight: 50,
                     alignItems: "center",
-                    justifyContent: "flex-start",
                     padding: "0 16px",
                     border: 0,
                     borderRadius: 14,
@@ -931,8 +1073,6 @@ function FlowPlanningPanel({
                     font: "inherit",
                     fontSize: 16,
                     fontWeight: 500,
-                    lineHeight: 1,
-                    textAlign: "left",
                     cursor: "pointer",
                   }}
                 >
