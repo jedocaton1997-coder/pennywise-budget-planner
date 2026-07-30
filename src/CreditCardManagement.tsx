@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
-import "./AccountsCardsRedesign.css";
+import AccountsCardsDashboard from "./components/AccountsCardsDashboard";
+import "./components/AccountsCardsDashboard.css";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { BankLogo } from './components/BankLogo'
 import { BankAutocomplete } from './components/BankAutocomplete'
@@ -501,308 +502,32 @@ export default function CreditCardManagement({ onNotice }: Props) {
           <h2>Accounts & Cards</h2>
           <p>Manage savings, checking, and credit cards in one place.</p>
         </div>
-        <div className="account-head-actions">
-          <button className="primary" onClick={() => setModal(effectiveAccountView === "bank" ? "account" : "card")}>
-            <Plus />
-            {effectiveAccountView === "bank" ? "Add bank account" : "Add credit card"}
-          </button>
-        </div>
       </div>
-      <NetWorthSummary totalAssets={totalAssets} totalLiabilities={totalLiabilities} netWorth={netWorth} filter={netWorthFilter} hidden={hideNetWorth} onToggleHidden={()=>setHideNetWorth(value=>!value)} onFilter={applyNetWorthFilter}/>
-      <div className="account-view-tabs" role="tablist" aria-label="Account view">
-        <button type="button" role="tab" aria-selected={effectiveAccountView === "bank"} className={effectiveAccountView === "bank" ? "active" : ""} onClick={() => {setNetWorthFilter("All");setAccountView("bank")}}>Bank accounts</button>
-        <button type="button" role="tab" aria-selected={effectiveAccountView === "credit"} className={effectiveAccountView === "credit" ? "active" : ""} onClick={() => {setNetWorthFilter("All");setAccountView("credit")}}>Credit cards</button>
-      </div>
-      <div className="wallet-carousel">
-      <button type="button" className="wallet-carousel-arrow previous" aria-label={`Previous ${effectiveAccountView === "bank" ? "bank account" : "credit card"}`} onClick={()=>moveCarousel(-1)}><ChevronLeft/></button>
-      <div className="wallet-card-strip" ref={walletCarousel}>
-        {effectiveAccountView === "bank" ? visibleAccounts.map((account) => {
-          const accountColor = logoColors[`account-${account.id}`] ?? (account.type === "Savings"
-            ? "#087a5b"
-            : account.type === "Checking"
-              ? "#176a74"
-              : account.type === "Digital wallet"
-                ? "#5b4ab0"
-                : "#475569");
-          return (
-            <button
-              key={`account-${account.id}`}
-              type="button"
-              aria-label={`${account.name}, ${account.type}, ${hideNetWorth?"balance hidden":peso(account.balance)}`}
-              className={account.id === selectedAccount.id ? "selected" : ""}
-              onClick={() => setSelectedAccountId(account.id)}
-              style={{ "--card-color": accountColor, "--card-ink": logoTextColor(accountColor) } as React.CSSProperties}
-            >
-              <span>
-                <BankLogo bankName={account.bank} customLogo={account.customLogo} size="small" onColorDetected={color=>rememberLogoColor(`account-${account.id}`,color)} />
-                <small>{account.type}</small>
-              </span>
-              <b>{account.name}</b>
-              <small>{account.last4?`•••• ${account.last4}`:account.bank || "Manual account"}</small>
-              <strong>{privatePeso(account.balance)}</strong>
-              <em>Account</em>
-            </button>
-          );
-        }) : visibleCards
-          .map((card) => {
-            const c = computeCard(card, transactions, statements, payments, "2026-07-20", reservedForCard(card));
-            const cardColor=logoColors[`card-${card.id}`]??card.color;
-            return (
-              <button
-                key={card.id}
-                className={card.id === selected.id ? "selected" : ""}
-                onClick={() => setSelectedId(card.id)}
-                style={{ "--card-color": cardColor, "--card-ink": logoTextColor(cardColor) } as React.CSSProperties}
-              >
-                <span>
-                  <BankLogo bankId={card.bankId} bankName={card.bank} customLogo={card.customLogo} size="small" onColorDetected={color=>rememberLogoColor(`card-${card.id}`,color)}/>
-                  <small>•••• {card.last4}</small>
-                </span>
-                <b>{card.name}</b>
-                <small>{card.bank}</small>
-                <strong>
-                  {c.creditBalance
-                    ? `${privatePeso(c.creditBalance)} credit`
-                    : privatePeso(c.currentBalance)}
-                </strong>
-                <em
-                  className={c.paymentStatus.toLowerCase().replaceAll(" ", "-")}
-                >
-                  {c.paymentStatus}
-                </em>
-              </button>
-            );
-          })}
-      </div>
-      <button type="button" className="wallet-carousel-arrow next" aria-label={`Next ${effectiveAccountView === "bank" ? "bank account" : "credit card"}`} onClick={()=>moveCarousel(1)}><ChevronRight/></button>
-      </div>
-      {effectiveAccountView === "bank" && !visibleAccounts.length ? (
-        <article className="surface"><p className="empty-card">No asset accounts to show. Add a bank, savings, checking, cash, or e-wallet account to begin.</p></article>
-      ) : effectiveAccountView === "bank" ? (
-        <>
-          <div className="wallet-hero bank-account-hero surface">
-            <button type="button" className="wallet-card-identity bank-account-identity editable-wallet-card" onClick={()=>setModal("edit-account")} aria-label={`Edit ${selectedAccount.name}`} style={{"--card-color":logoColors[`account-${selectedAccount.id}`]??"#087a5b","--card-ink":logoTextColor(logoColors[`account-${selectedAccount.id}`]??"#087a5b")} as React.CSSProperties}>
-              <BankLogo bankName={selectedAccount.bank} customLogo={selectedAccount.customLogo} size="large" onColorDetected={color=>rememberLogoColor(`account-${selectedAccount.id}`,color)} />
-              <span>
-                <small>{selectedAccount.bank || "Manual account"}</small>
-                <b>{selectedAccount.name}</b>
-                <em>{selectedAccount.last4?`•••• ${selectedAccount.last4}`:selectedAccount.type}</em>
-              </span>
-            </button>
-            <div className="statement-overview-inline">
-              <div className="statement-overview-title"><b>Account overview</b><div className="statement-overview-actions"><button className="primary overview-add-transaction" onClick={() => setModal("account-transaction")}><Plus/>Add transaction</button><button className="outline overview-add-transaction" onClick={()=>setModal("transfer")}><ArrowLeftRight/>Transfer</button><button className="outline overview-add-transaction" onClick={()=>setModal("account-statement")}><History/>View statement</button></div></div>
-              <div className="wallet-metrics account-metrics">
-                <Metric label="Available balance" value={privatePeso(selectedAccount.balance)} />
-                <Metric label="Institution" value={selectedAccount.bank || "Manual"} />
-                <Metric label="Account type" value={selectedAccount.type} />
-                <Metric label="Transactions" value={String(selectedAccountTransactions.length)} />
-              </div>
-            </div>
-          </div>
-          <article className="surface card-history account-history">
-            <div className="surface-title"><b>Transaction history</b><span className="account-history-count">{selectedAccountTransactions.length} total transaction{selectedAccountTransactions.length===1?"":"s"}</span></div>
-            <div className="account-statement-head compact-statement-head"><span>Date</span><span>Description</span><span>Category</span><span>Amount</span><span>Running balance</span></div>
-            {accountPeriods.length?accountPeriods.map(period=><AccountTransactionPeriod key={period.key} title={period.title} range={period.range} cutoff={period.cutoff} rows={period.rows} balances={accountStatementBalances} accountBalance={selectedAccount.balance} onEdit={transaction=>{setEditingAccountTransaction(transaction);setModal("edit-account-transaction")}}/>):<p className="empty-card">No transactions recorded for this account.</p>}
-          </article>
-        </>
-      ) : !visibleCards.length ? (
-        <article className="surface"><p className="empty-card">No liability accounts to show. Add an active credit card to begin.</p></article>
-      ) : (
-        <>
-      <div className="wallet-hero credit-card-hero surface">
-        <button
-          type="button"
-          className="wallet-card-identity credit-card-identity editable-wallet-card"
-          onClick={() => setModal("edit-card")}
-          aria-label={`Edit ${selected.name}`}
-          style={{ "--card-color":logoColors[`card-${selected.id}`]??selected.color,"--card-ink":logoTextColor(logoColors[`card-${selected.id}`]??selected.color) } as React.CSSProperties}
-        >
-          <BankLogo bankId={selected.bankId} bankName={selected.bank} customLogo={selected.customLogo} size="large" onColorDetected={color=>rememberLogoColor(`card-${selected.id}`,color)}/>
-          <span>
-            <small>{selected.bank}</small>
-            <b>{selected.name}</b>
-            <em>•••• {selected.last4}</em>
-          </span>
-          <div className="credit-card-limits"><span><small>{selected.sharedLimitCardId||sharedLimitCards.length>1?"Shared credit limit":"Total credit limit"}</small><b>{privatePeso(effectiveCreditLimit)}</b></span><span><small>Available credit</small><b>{privatePeso(effectiveAvailableCredit)}</b></span></div>
-        </button>
-        <div className="statement-overview-inline"><div className="statement-overview-title"><b>Statement Overview</b><div className="statement-overview-actions"><span className={`statement-status ${displayedPaymentStatus.toLowerCase().replaceAll(" ", "-")}`}>{displayedPaymentStatus}</span><button className="primary overview-add-transaction" onClick={() => setModal("payment")}>Pay card</button><button className="outline overview-add-transaction" onClick={() => setModal("transaction")}><Plus/>Add transaction</button><button className="outline overview-add-transaction" onClick={()=>setModal("transfer")}><ArrowLeftRight/>Transfer</button><button className="outline overview-add-transaction" onClick={() => setModal("statement")}><History/>View statement</button></div></div><div className="wallet-metrics">
-          <Metric
-            label="Current balance"
-            value={
-              computed.creditBalance
-                ? `${privatePeso(computed.creditBalance)} credit`
-                : privatePeso(computed.currentBalance)
-            }
-          />
-          <Metric label="Statement balance" value={privatePeso(displayedStatementBalance)} />
-          <Metric label="Statement date" value={pretty(displayedStatementDate)} />
-          <Metric label="Payment due date" value={pretty(displayedDueDate)} />
-        </div></div>
-      </div>
-      {/* Detailed balances and transactions are intentionally kept in View statement. */}
-      {false && <article className="surface unified-card-overview">
-        <div className="surface-title"><b>Balance & statement overview</b><span className={`statement-status ${displayedPaymentStatus.toLowerCase().replaceAll(" ", "-")}`}>{displayedPaymentStatus}</span></div>
-        <div className="unified-balance-strip"><Metric label="Outstanding balance" value={peso(computed.currentBalance)}/><Metric label="Statement balance" value={peso(displayedStatementBalance)}/><Metric label="Amount due" value={computed.lastStatement?peso(computed.lastStatement!.remainingDue):peso(displayedStatementBalance)}/><Metric label="Minimum due" value={computed.lastStatement?peso(computed.lastStatement!.minimumDue):peso(0)}/></div>
-        <div className="unified-statement-grid">
-        <section className="statement-summary">
-          <div className="surface-title">
-            <b>Last statement</b>
-            <span
-              className={`statement-status ${computed.paymentStatus.toLowerCase().replaceAll(" ", "-")}`}
-            >
-              {computed.paymentStatus}
-            </span>
-          </div>
-          {computed.lastStatement ? (
-            <>
-              <div className="statement-dates">
-                <span>
-                  <small>Statement date</small>
-                  <b>{pretty(computed.lastStatement!.statementDate)}</b>
-                </span>
-                <span>
-                  <small>Payment due</small>
-                  <b>{pretty(computed.lastStatement!.dueDate)}</b>
-                </span>
-              </div>
-              <div className="amount-due">
-                <span>Remaining amount due</span>
-                <strong>{peso(computed.lastStatement!.remainingDue)}</strong>
-                <small>
-                  Original statement:{" "}
-                  {peso(computed.lastStatement!.statementBalance)}
-                </small>
-              </div>
-              <dl>
-                <Row
-                  label="Payments applied"
-                  value={peso(computed.lastStatement!.paymentsApplied)}
-                />
-                <Row
-                  label="Minimum amount due"
-                  value={peso(computed.lastStatement!.minimumDue)}
-                />
-                <Row
-                  label="Statement status"
-                  value={computed.lastStatement!.status}
-                />
-              </dl>
-            </>
-          ) : (
-            <div className="empty-card">No statement generated yet.</div>
-          )}
-        </section>
-        <section className="cycle-summary">
-          <div className="surface-title">
-            <b>Current billing cycle</b>
-            <span className="estimated">Estimated</span>
-          </div>
-          <div className="amount-due">
-            <span>This statement so far</span>
-            <strong>{peso(computed.thisStatementSoFar)}</strong>
-            <small>
-              {computed.cycleTransactions.length} posted transaction
-              {computed.cycleTransactions.length === 1 ? "" : "s"}
-            </small>
-          </div>
-          <dl>
-            <Row
-              label="Cycle start"
-              value={pretty(computed.currentCycleStart)}
-            />
-            <Row
-              label="Next statement date"
-              value={pretty(computed.nextStatementDate)}
-            />
-            <Row label="Purchases" value={peso(computed.cyclePurchases)} />
-            <Row
-              label="Installments"
-              value={peso(computed.cycleInstallments)}
-            />
-            <Row
-              label="Fees + interest"
-              value={peso(computed.cycleFees + computed.cycleInterest)}
-            />
-            <Row
-              label="Refunds + credits"
-              value={`−${peso(computed.cycleRefunds + computed.cycleCredits)}`}
-            />
-          </dl>
-        </section>
-        <section className="obligation-summary">
-          <div className="surface-title">
-            <b>Upcoming obligation</b>
-            <CalendarDays />
-          </div>
-          <div className="obligation-callout">
-            <span>Planned payment</span>
-            <strong>{peso(computed.plannedPayment)}</strong>
-            <small>Forecast preference: {selected.forecastPreference}</small>
-          </div>
-          <dl>
-            <Row label="Funding account" value={selected.linkedAccount} />
-            <Row
-              label="Due date"
-              value={
-                computed.lastStatement
-                  ? pretty(computed.lastStatement!.dueDate)
-                  : "No payment due"
-              }
-            />
-            <Row
-              label="Forecast impact"
-              value={`−${peso(computed.plannedPayment)}`}
-            />
-          </dl>
-          {computed.plannedPayment > 9500 && (
-            <div className="cash-warning">
-              <AlertTriangle />
-              <span>
-                <b>Cash shortfall warning</b>
-                <small>Projected account funds: ₱9,500</small>
-              </span>
-            </div>
-          )}
-        </section>
-        </div>
-      </article>}
-      <article className="surface card-history">
-        <div className="surface-title">
-          <b>Transaction history</b>
-          <div className="history-filters">
-            {[
-              "All",
-              "Purchases",
-              "Payments",
-              "Refunds",
-              "Installments",
-              "Fees",
-              "Interest",
-              "Adjustments",
-            ].map((v) => (
-              <button
-                className={filter === v ? "active" : ""}
-                onClick={() => setFilter(v)}
-                key={v}
-              >
-                {v}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="history-head">
-          <span aria-hidden="true" />
-          <span>Date</span>
-          <span>Description</span>
-          <span>Type</span>
-          <span>Category</span>
-          <span>Amount</span>
-          <span>Status</span>
-        </div>
-        {transactionCycles.map(cycle=><TransactionCycle key={`${cycle.start}-${cycle.end}`} title={cycle.title} range={`${pretty(cycle.start)} – ${pretty(cycle.end)}`} transactions={cycle.transactions} onEdit={transaction=>{setEditingCardTransaction(transaction);setModal("edit-transaction")}}/>)}
-      </article>
-        </>
-      )}
+
+      <AccountsCardsDashboard
+        accounts={accounts}
+        cards={cards}
+        accountTransactions={accountTransactions}
+        cardTransactions={transactions}
+        statements={statements}
+        payments={payments}
+        selectedAccountId={selectedAccountId}
+        selectedCardId={selectedId}
+        onSelectAccount={setSelectedAccountId}
+        onSelectCard={setSelectedId}
+        hideBalances={hideNetWorth}
+        onAddBankAccount={() => setModal("account")}
+        onAddCreditCard={() => setModal("card")}
+        onEditAccount={() => setModal("edit-account")}
+        onEditCard={() => setModal("edit-card")}
+        onAddAccountTransaction={() => setModal("account-transaction")}
+        onAddCardTransaction={() => setModal("transaction")}
+        onTransfer={() => setModal("transfer")}
+        onPayCard={() => setModal("payment")}
+        onViewAccountStatement={() => setModal("account-statement")}
+        onViewCardStatement={() => setModal("statement")}
+      />
+
       {modal === "payment" && (
         <PaymentModal
           card={selected}
