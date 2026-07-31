@@ -1,1249 +1,1359 @@
 /* =========================================================
-   ACCOUNTS & CARDS — COMPACT REFERENCE-MATCHING STYLESHEET
-   Replace the existing Accounts & Cards stylesheet with this file.
-
-   Notes:
-   1. Existing class names are preserved.
-   2. Duplicate/competing layout overrides have been removed.
-   3. Optional classes are included for the billing-cycle strip,
-      transaction menu column, and connected payment timeline.
+   ACCOUNTS & CARDS — FINAL LAYOUT AND OVERFLOW FIX
+   Paste this entire block at the bottom of the existing CSS.
    ========================================================= */
 
 .ac-dashboard {
-  --green: #168a5b;
-  --green-dark: #0f7048;
-  --green-soft: #eaf7f0;
-  --green-softer: #f5fbf7;
-  --red: #ef534f;
-  --red-soft: #fff0ee;
-  --blue: #4d84d3;
-  --blue-soft: #eef4ff;
-  --amber: #ef9b34;
-  --amber-soft: #fff5e6;
-  --ink: #102630;
-  --muted: #718087;
-  --line: #dfe9e5;
-  --line-soft: #edf2f0;
-  --surface: rgba(255, 255, 255, 0.97);
-  --surface-soft: #f8fbfa;
-  --shadow: 0 3px 12px rgba(26, 55, 46, 0.045);
+  --ac-gap: 12px;
+  --ac-radius: 12px;
+  --ac-border: #dce7e3;
+  --ac-surface: #ffffff;
+  --ac-muted: #718087;
+  --ac-green: #168a5b;
 
-  width: 100%;
-  max-width: none;
-  min-width: 0;
-  margin: 0 auto;
-  display: grid;
-  gap: 10px;
-  color: var(--ink);
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: var(--ac-gap) !important;
+
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+
+  overflow: visible !important;
 }
 
+.ac-dashboard,
 .ac-dashboard *,
 .ac-dashboard *::before,
 .ac-dashboard *::after {
   box-sizing: border-box;
 }
 
-.ac-dashboard button,
-.ac-dashboard input,
-.ac-dashboard select,
-.ac-dashboard textarea {
-  font: inherit;
+.ac-dashboard > *,
+.ac-main-grid > *,
+.ac-wallet-panel > *,
+.ac-insights-panel > *,
+.ac-selected-detail > *,
+.ac-detail-content > *,
+.ac-statement-grid > *,
+.ac-spending-body > *,
+.ac-health-grid > * {
+  min-width: 0;
 }
 
-.ac-dashboard button {
-  cursor: pointer;
+/* ---------------------------------------------------------
+   FLATTEN THE OLD TWO-COLUMN WRAPPER
+
+   This allows Wallet, Statement, Spending, Timeline and
+   Account Health to be positioned directly in the dashboard.
+   --------------------------------------------------------- */
+
+.ac-main-grid {
+  display: contents !important;
 }
 
-.ac-dashboard .positive { color: var(--green); }
-.ac-dashboard .negative { color: var(--red); }
+.ac-insights-panel {
+  display: contents !important;
+}
+
+/* ---------------------------------------------------------
+   FINAL DESKTOP ORDER
+
+   1. Summary strip
+   2. My Cards & Accounts carousel
+   3. Selected card
+   4. Statement Overview
+   5. Spending
+   6. Timeline
+   7. Account Health
+   8. Transaction History
+   --------------------------------------------------------- */
+
+.ac-summary-strip {
+  order: 1;
+}
+
+.ac-wallet-panel {
+  order: 2;
+}
+
+.ac-insight-card.statement {
+  order: 3;
+}
+
+.ac-insight-card.spending {
+  order: 4;
+}
+
+.ac-insight-card.timeline {
+  order: 5;
+}
+
+.ac-insight-card.health {
+  order: 6;
+}
+
+.ac-history {
+  order: 7;
+}
+
+/* ---------------------------------------------------------
+   SHARED CONTAINERS
+   --------------------------------------------------------- */
 
 .ac-summary-strip,
 .ac-wallet-panel,
 .ac-insight-card,
 .ac-history {
-  min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  background: var(--surface);
-  box-shadow: var(--shadow);
+  width: 100% !important;
+  min-width: 0 !important;
+  height: auto !important;
+
+  border: 1px solid var(--ac-border) !important;
+  border-radius: var(--ac-radius) !important;
+  background: var(--ac-surface) !important;
+
+  box-shadow:
+    0 2px 8px rgba(24, 65, 52, 0.035),
+    0 8px 24px rgba(24, 65, 52, 0.035) !important;
 }
 
-/* =========================================================
+/* Do not clip regular text content. */
+.ac-wallet-panel,
+.ac-insight-card,
+.ac-history {
+  overflow: visible !important;
+}
+
+/* ---------------------------------------------------------
    SUMMARY STRIP
-   ========================================================= */
+   --------------------------------------------------------- */
 
 .ac-summary-strip {
-  display: grid;
+  display: grid !important;
+
   grid-template-columns:
-    minmax(245px, 1.35fr)
-    repeat(4, minmax(145px, 1fr))
-    minmax(245px, auto);
-  min-height: 94px;
-  overflow: hidden;
+    minmax(245px, 1.3fr)
+    repeat(4, minmax(175px, 1fr))
+    minmax(245px, auto) !important;
+
+  min-height: 96px !important;
+  overflow: hidden !important;
 }
 
 .ac-summary-main,
 .ac-summary-metric {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  border-right: 1px solid var(--line);
+  display: flex !important;
+  align-items: center !important;
+
+  min-width: 0 !important;
+  min-height: 94px !important;
+
+  gap: 11px !important;
+  padding: 13px 16px !important;
+
+  border-right: 1px solid var(--ac-border) !important;
 }
 
 .ac-summary-main {
-  justify-content: space-between;
+  justify-content: space-between !important;
 }
 
 .ac-summary-main > div,
 .ac-summary-metric > span {
-  min-width: 0;
-  display: grid;
-  gap: 3px;
+  display: grid !important;
+  gap: 4px !important;
+
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+.ac-summary-main small,
+.ac-summary-main strong,
+.ac-summary-main span,
+.ac-summary-main em,
+.ac-summary-metric small,
+.ac-summary-metric strong,
+.ac-summary-metric span,
+.ac-summary-metric em {
+  max-width: 100% !important;
+
+  line-height: 1.2 !important;
+  overflow-wrap: anywhere !important;
+  word-break: normal !important;
+}
+
+.ac-summary-main strong {
+  font-size: clamp(1.25rem, 1.45vw, 1.65rem) !important;
+  white-space: nowrap !important;
+}
+
+.ac-summary-metric strong {
+  font-size: clamp(0.92rem, 1vw, 1.1rem) !important;
+  white-space: nowrap !important;
 }
 
 .ac-summary-main small,
 .ac-summary-metric small,
-.ac-summary-metric em,
-.ac-metric small {
-  color: var(--muted);
-  font-size: 0.68rem;
-  font-style: normal;
-  line-height: 1.25;
-}
-
-.ac-summary-main strong {
-  font-size: 1.45rem;
-  line-height: 1.05;
+.ac-summary-metric em {
+  font-size: 0.68rem !important;
 }
 
 .ac-summary-main svg {
-  width: 92px;
-  max-width: 38%;
-  color: var(--green);
+  flex: 0 0 auto !important;
+  width: 92px !important;
+  max-width: 35% !important;
 }
 
 .ac-summary-metric > i {
-  width: 36px;
-  height: 36px;
-  flex: 0 0 36px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--green-soft);
-  color: var(--green);
+  display: grid !important;
+  place-items: center !important;
+
+  flex: 0 0 38px !important;
+
+  width: 38px !important;
+  height: 38px !important;
+
+  border-radius: 50% !important;
 }
 
-.ac-summary-metric.negative > i {
-  background: var(--red-soft);
-  color: var(--red);
+.ac-summary-metric > i svg {
+  width: 17px !important;
+  height: 17px !important;
 }
 
-.ac-summary-metric.blue > i {
-  background: var(--blue-soft);
-  color: var(--blue);
-}
-
-.ac-summary-metric.warning > i {
-  background: var(--amber-soft);
-  color: var(--amber);
-}
-
-.ac-summary-metric > i svg { width: 17px; }
-.ac-summary-metric strong { font-size: 0.95rem; line-height: 1.15; }
-.ac-summary-metric em { white-space: nowrap; }
+/* Summary account-type filters */
 
 .ac-view-filter {
-  align-self: center;
-  justify-self: center;
-  display: flex;
-  margin: 10px 12px;
-  padding: 3px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface-soft);
+  display: flex !important;
+  align-self: center !important;
+  justify-self: center !important;
+
+  min-width: 0 !important;
+  max-width: calc(100% - 20px) !important;
+
+  margin: 10px !important;
+  padding: 3px !important;
+
+  border: 1px solid var(--ac-border) !important;
+  border-radius: 11px !important;
+  background: #f8fbfa !important;
 }
 
 .ac-view-filter button {
-  min-height: 30px;
-  border: 0;
-  border-radius: 8px;
-  padding: 0 11px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 0.72rem;
-  white-space: nowrap;
+  min-width: 0 !important;
+  min-height: 34px !important;
+
+  padding: 0 11px !important;
+
+  border: 0 !important;
+  border-radius: 9px !important;
+
+  font-size: 0.7rem !important;
+  white-space: nowrap !important;
 }
 
-.ac-view-filter button.active {
-  background: var(--green);
-  color: #fff;
-}
+/* ---------------------------------------------------------
+   MY CARDS & ACCOUNTS — FULL-WIDTH SECTION
+   --------------------------------------------------------- */
 
-/* =========================================================
-   MAIN TWO-COLUMN LAYOUT
-   ========================================================= */
+.ac-wallet-panel {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
 
-.ac-main-grid {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1.16fr) minmax(0, 0.94fr);
-  gap: 10px;
-  align-items: start;
-}
-
-.ac-wallet-panel,
-.ac-insights-panel {
-  min-width: 0;
-  align-self: start;
-  height: auto;
-}
-
-.ac-wallet-panel,
-.ac-insight-card,
-.ac-history {
-  overflow: hidden;
-}
-
-/* =========================================================
-   SHARED SECTION HEADERS
-   ========================================================= */
-
-.ac-section-title,
-.ac-insight-title,
-.ac-history-title {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  height: auto !important;
+  min-height: 0 !important;
 }
 
 .ac-section-title {
-  min-height: auto;
-  padding: 13px 16px 6px;
-  border-bottom: 0;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+
+  min-width: 0 !important;
+  min-height: 56px !important;
+
+  gap: 12px !important;
+  padding: 10px 16px 5px !important;
+
+  border-bottom: 0 !important;
 }
 
-.ac-insight-title {
-  min-height: 38px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--line);
-}
+.ac-section-title > div {
+  display: grid !important;
+  gap: 1px !important;
 
-.ac-history-title {
-  min-height: 44px;
-  padding: 7px 14px;
-  border-bottom: 1px solid var(--line);
-}
-
-.ac-section-title small,
-.ac-insight-title small {
-  color: var(--muted);
+  min-width: 0 !important;
 }
 
 .ac-section-title h3,
-.ac-insight-title h3,
-.ac-history-title h3 {
-  margin: 0;
-  line-height: 1.2;
+.ac-section-title small {
+  max-width: 100% !important;
+  margin: 0 !important;
+
+  line-height: 1.25 !important;
+  overflow-wrap: anywhere !important;
 }
 
-.ac-section-title h3 { font-size: 0.95rem; }
-.ac-insight-title h3 { font-size: 0.82rem; }
-.ac-history-title h3 { font-size: 0.92rem; }
+.ac-section-title h3 {
+  font-size: 0.95rem !important;
+}
 
-.ac-section-title button,
-.ac-insight-title button {
-  display: inline-flex;
-  min-height: 30px;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  border-radius: 8px;
-  white-space: nowrap;
+.ac-section-title small {
+  font-size: 0.7rem !important;
 }
 
 .ac-section-title > button {
-  width: auto;
-  min-width: 0;
+  flex: 0 0 auto !important;
+
+  width: auto !important;
+  min-width: 154px !important;
+  min-height: 36px !important;
+
+  padding: 7px 14px !important;
+
+  border-radius: 10px !important;
+
+  font-size: 0.78rem !important;
+  white-space: nowrap !important;
 }
 
-.ac-section-title button svg,
-.ac-insight-title button svg {
-  width: 15px;
-}
-
-.ac-insight-title button {
-  border: 1px solid var(--line);
-  background: #fff;
-  color: var(--green);
-  padding-inline: 9px;
-  font-size: 0.68rem;
-}
-
-/* =========================================================
-   CARD CAROUSEL
-   ========================================================= */
+/* ---------------------------------------------------------
+   CAROUSEL
+   --------------------------------------------------------- */
 
 .ac-carousel-wrap {
-  position: relative;
-  padding: 8px 26px 10px;
+  position: relative !important;
+
+  width: 100% !important;
+  min-width: 0 !important;
+
+  padding: 8px 29px 11px !important;
+  overflow: visible !important;
 }
 
 .ac-card-carousel {
-  min-width: 0;
-  display: flex;
-  gap: 10px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  scroll-snap-type: x mandatory;
-  overscroll-behavior-inline: contain;
+  display: flex !important;
+
+  width: 100% !important;
+  min-width: 0 !important;
+
+  gap: 10px !important;
+
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+
+  scroll-snap-type: x proximity !important;
+  scrollbar-width: none !important;
 }
 
-.ac-card-carousel::-webkit-scrollbar { display: none; }
+.ac-card-carousel::-webkit-scrollbar {
+  display: none !important;
+}
 
 .ac-carousel-arrow {
-  position: absolute;
-  top: 50%;
-  z-index: 3;
-  width: 30px;
-  height: 30px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  background: #fff;
-  color: var(--ink);
-  box-shadow: 0 2px 7px rgba(26, 55, 46, 0.08);
-  transform: translateY(-50%);
+  position: absolute !important;
+  top: 50% !important;
+  z-index: 10 !important;
+
+  display: grid !important;
+  place-items: center !important;
+
+  width: 32px !important;
+  height: 42px !important;
+
+  border: 1px solid var(--ac-border) !important;
+  border-radius: 15px !important;
+
+  background: #fff !important;
+  box-shadow: 0 3px 10px rgba(30, 60, 50, 0.08) !important;
+
+  transform: translateY(-50%) !important;
 }
 
-.ac-carousel-arrow.previous { left: -7px; }
-.ac-carousel-arrow.next { right: -7px; }
+.ac-carousel-arrow.previous {
+  left: -1px !important;
+}
+
+.ac-carousel-arrow.next {
+  right: -1px !important;
+}
+
+/* Wider carousel cards so labels do not overlap */
 
 .ac-mini-card {
-  position: relative;
-  flex: 0 0 calc((100% - 40px) / 5);
-  min-width: 142px;
-  max-width: none;
-  min-height: 116px;
-  overflow: hidden;
-  padding: 13px;
-  border: 2px solid transparent;
-  border-radius: 12px;
-  color: #fff;
-  text-align: left;
-  scroll-snap-align: start;
-  box-shadow: 0 6px 14px rgba(27, 54, 45, 0.12);
-}
+  position: relative !important;
 
-.ac-mini-card.bank {
-  background: linear-gradient(145deg, #238f78, #16735f);
-}
+  flex: 0 0 clamp(205px, 15.5vw, 238px) !important;
 
-.ac-mini-card.credit {
-  background: linear-gradient(
-    145deg,
-    color-mix(in srgb, var(--ac-card-color) 90%, #fff),
-    var(--ac-card-color)
-  );
-  color: var(--ac-card-ink);
-}
+  width: auto !important;
+  min-width: 205px !important;
+  max-width: none !important;
+  min-height: 150px !important;
+  height: auto !important;
 
-.ac-mini-card.selected {
-  border-color: #36b67e;
-  box-shadow: 0 0 0 2px rgba(54, 182, 126, 0.14), 0 6px 14px rgba(27, 54, 45, 0.12);
+  padding: 14px !important;
+
+  border-radius: 12px !important;
+
+  text-align: left !important;
+  scroll-snap-align: start !important;
+
+  overflow: hidden !important;
 }
 
 .ac-mini-card > div {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: flex-start !important;
+
+  min-width: 0 !important;
+
+  gap: 10px !important;
 }
 
-.ac-mini-card > b,
-.ac-mini-card > span,
-.ac-mini-card > strong {
-  display: block;
+.ac-mini-card > div > i,
+.ac-mini-card > div > svg,
+.ac-mini-card > div > img {
+  flex: 0 0 auto !important;
+}
+
+.ac-mini-card > div > span,
+.ac-mini-card > div > div {
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+.ac-mini-card b,
+.ac-mini-card span,
+.ac-mini-card strong,
+.ac-mini-card small,
+.ac-mini-card em {
+  max-width: 100% !important;
+
+  line-height: 1.25 !important;
+  overflow-wrap: anywhere !important;
+  word-break: normal !important;
 }
 
 .ac-mini-card > b {
-  margin-top: 9px;
-  font-size: 0.76rem;
+  margin-top: 10px !important;
+  font-size: 0.78rem !important;
 }
 
 .ac-mini-card > span {
-  margin-top: 2px;
-  font-size: 0.66rem;
-  opacity: 0.82;
+  margin-top: 3px !important;
+  font-size: 0.67rem !important;
 }
 
 .ac-mini-card > strong {
-  margin-top: 14px;
-  font-size: 0.92rem;
+  margin-top: 15px !important;
+
+  font-size: 0.9rem !important;
+  white-space: nowrap !important;
 }
 
 .ac-mini-card > em {
-  position: absolute;
-  right: 8px;
-  bottom: 8px;
-  padding: 3px 6px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.16);
-  font-size: 0.56rem;
-  font-style: normal;
+  right: 9px !important;
+  bottom: 9px !important;
+
+  max-width: 75px !important;
+  padding: 4px 7px !important;
+
+  font-size: 0.57rem !important;
+  white-space: nowrap !important;
 }
 
-/* =========================================================
-   SELECTED CARD DETAIL
-   ========================================================= */
+/* ---------------------------------------------------------
+   SELECTED ACCOUNT OR CREDIT CARD
+
+   The selected-card area remains below the carousel.
+   --------------------------------------------------------- */
 
 .ac-selected-detail {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(245px, 0.78fr) minmax(0, 1.22fr);
-  min-height: 212px;
-  margin: 0 10px 10px;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #fff;
+  display: grid !important;
+
+  grid-template-columns:
+    minmax(300px, 0.72fr)
+    minmax(0, 1.28fr) !important;
+
+  width: auto !important;
+  min-width: 0 !important;
+  min-height: 222px !important;
+  height: auto !important;
+
+  gap: 0 !important;
+
+  margin: 0 10px 10px !important;
+
+  border: 1px solid var(--ac-border) !important;
+  border-radius: 10px !important;
+
+  overflow: hidden !important;
 }
 
 .ac-large-bank-card,
 .ac-large-credit-card {
-  position: relative;
-  min-height: 184px;
-  height: auto;
-  margin: 10px;
-  overflow: hidden;
-  padding: 18px;
-  border: 0;
-  border-radius: 12px;
-  color: #fff;
-  text-align: left;
-  box-shadow: 0 8px 18px rgba(25, 55, 45, 0.14);
-}
+  position: relative !important;
 
-.ac-large-bank-card {
-  background: linear-gradient(145deg, #238f78, #126b58);
-}
+  min-width: 0 !important;
+  min-height: 198px !important;
+  height: auto !important;
 
-.ac-large-credit-card {
-  background: linear-gradient(
-    145deg,
-    color-mix(in srgb, var(--ac-card-color) 90%, #fff),
-    var(--ac-card-color)
-  );
-  color: var(--ac-card-ink);
+  margin: 10px !important;
+  padding: 18px !important;
+
+  border-radius: 12px !important;
+
+  overflow: hidden !important;
 }
 
 .ac-large-bank-card > div,
 .ac-large-credit-card > div {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  min-width: 0 !important;
 }
 
 .ac-large-bank-card span,
 .ac-large-credit-card span {
-  display: grid;
-  gap: 3px;
+  min-width: 0 !important;
+  max-width: 100% !important;
 }
 
-.ac-large-bank-card span small,
-.ac-large-bank-card span em,
-.ac-large-credit-card span small,
-.ac-large-credit-card span em {
-  opacity: 0.8;
-}
+.ac-large-bank-card small,
+.ac-large-bank-card em,
+.ac-large-bank-card b,
+.ac-large-bank-card strong,
+.ac-large-credit-card small,
+.ac-large-credit-card em,
+.ac-large-credit-card b,
+.ac-large-credit-card strong {
+  max-width: 100% !important;
 
-.ac-large-bank-card span em,
-.ac-large-credit-card span em {
-  font-style: normal;
+  line-height: 1.25 !important;
+  overflow-wrap: anywhere !important;
 }
 
 .ac-large-bank-card > strong,
 .ac-large-credit-card > strong {
-  position: absolute;
-  bottom: 18px;
-  left: 18px;
-  font-size: 1.45rem;
+  bottom: 18px !important;
+  left: 18px !important;
+
+  max-width: calc(100% - 36px) !important;
+
+  font-size: clamp(1.25rem, 1.6vw, 1.65rem) !important;
+  white-space: nowrap !important;
 }
 
 .ac-detail-content {
-  min-width: 0;
-  border-left: 1px solid var(--line);
-  background: #fff;
+  display: grid !important;
+  grid-template-rows: auto auto auto !important;
+
+  min-width: 0 !important;
+  height: auto !important;
+
+  border-left: 1px solid var(--ac-border) !important;
+  background: #fff !important;
 }
 
-.ac-detail-summary,
+/* Credit limit / available credit / utilization */
+
 .ac-credit-limit-strip {
-  min-width: 0;
-  display: grid;
+  display: grid !important;
+
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr))
+    minmax(82px, 0.42fr) !important;
+
+  min-width: 0 !important;
+  min-height: 84px !important;
+  height: auto !important;
 }
 
-.ac-credit-limit-strip {
-  grid-template-columns: repeat(2, minmax(0, 1fr)) 92px;
-  min-height: 74px;
-}
-
-.ac-detail-summary {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  min-height: 62px;
-}
+/* Card Type, Limit, Statement Date, Due Date */
 
 .ac-detail-summary.compact {
-  min-height: 62px;
-  border-top: 1px solid var(--line);
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+
+  min-width: 0 !important;
+  min-height: 70px !important;
+  height: auto !important;
+
+  border-top: 1px solid var(--ac-border) !important;
 }
 
 .ac-metric {
-  min-width: 0;
-  display: grid;
-  align-content: center;
-  gap: 3px;
-  padding: 10px 12px;
-  border-right: 1px solid var(--line);
+  display: grid !important;
+  align-content: center !important;
+
+  min-width: 0 !important;
+
+  gap: 4px !important;
+  padding: 10px 12px !important;
+
+  border-right: 1px solid var(--ac-border) !important;
 }
 
-.ac-metric:last-child { border-right: 0; }
+.ac-metric:last-child {
+  border-right: 0 !important;
+}
+
+.ac-metric small,
+.ac-metric strong,
+.ac-metric span,
+.ac-metric em {
+  display: block !important;
+
+  min-width: 0 !important;
+  max-width: 100% !important;
+
+  line-height: 1.25 !important;
+  overflow-wrap: anywhere !important;
+}
+
+.ac-metric small {
+  font-size: 0.64rem !important;
+}
 
 .ac-metric strong {
-  overflow: hidden;
-  font-size: 0.8rem;
-  line-height: 1.2;
-  text-overflow: ellipsis;
+  font-size: clamp(0.78rem, 0.9vw, 1rem) !important;
 }
 
 .ac-gauge {
-  min-width: 0;
-  display: grid;
-  place-items: center;
-  padding: 8px;
+  display: grid !important;
+  place-items: center !important;
+
+  min-width: 0 !important;
+
+  padding: 8px !important;
 }
 
 .ac-gauge > span {
-  width: 54px;
-  height: 54px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at center, #fff 56%, transparent 58%),
-    conic-gradient(var(--green) calc(var(--value) * 1%), #e6ece9 0);
+  width: 55px !important;
+  height: 55px !important;
 }
 
 .ac-gauge small {
-  color: var(--muted);
-  font-size: 0.62rem;
+  font-size: 0.62rem !important;
 }
+
+/* Fix overlapping action buttons */
 
 .ac-detail-actions {
-  display: grid;
-  grid-template-columns: 110px repeat(3, minmax(0, 1fr));
-  gap: 7px;
-  padding: 9px 12px;
-  border-top: 1px solid var(--line);
+  display: grid !important;
+
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+
+  width: 100% !important;
+  min-width: 0 !important;
+
+  gap: 7px !important;
+  padding: 9px 11px !important;
+
+  border-top: 1px solid var(--ac-border) !important;
+
+  overflow: visible !important;
 }
 
-.ac-detail-actions button {
-  min-width: 0;
-  min-height: 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  border-radius: 8px;
-  white-space: nowrap;
+.ac-detail-actions button,
+.ac-detail-actions .primary {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 36px !important;
+
+  gap: 6px !important;
+  padding: 7px 8px !important;
+
+  border-radius: 10px !important;
+
+  font-size: 0.72rem !important;
+  line-height: 1.1 !important;
+  white-space: nowrap !important;
 }
 
-.ac-detail-actions svg { width: 15px; }
+.ac-detail-actions button svg {
+  flex: 0 0 auto !important;
 
-/* =========================================================
-   RIGHT-SIDE INSIGHTS
-   Expected child classes:
-   .statement, .spending, .timeline, .health
-   ========================================================= */
-
-.ac-insights-panel {
-  display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(250px, 0.75fr);
-  gap: 8px;
-  align-content: start;
+  width: 14px !important;
+  height: 14px !important;
 }
 
-.ac-insights-panel > .statement,
-.ac-insights-panel > .health,
-.ac-insights-panel > .bank-overview,
-.ac-insights-panel > .recent {
-  grid-column: 1 / -1;
+/* ---------------------------------------------------------
+   INSIGHT CARDS
+
+   Statement is full width.
+   Spending and Timeline sit side by side on desktop.
+   Account Health is full width.
+   --------------------------------------------------------- */
+
+.ac-insight-card.statement,
+.ac-insight-card.health {
+  grid-column: 1 / -1 !important;
 }
 
-.ac-insights-panel > .spending { grid-column: 1; }
-.ac-insights-panel > .timeline { grid-column: 2; }
+/*
+  The dashboard temporarily changes to two columns for these
+  two cards. The order keeps them below the wallet panel.
+*/
 
-/* Statement Overview */
+.ac-dashboard {
+  grid-template-columns:
+    minmax(0, 1.32fr)
+    minmax(315px, 0.68fr) !important;
+}
+
+.ac-summary-strip,
+.ac-wallet-panel,
+.ac-insight-card.statement,
+.ac-insight-card.health,
+.ac-history {
+  grid-column: 1 / -1 !important;
+}
+
+.ac-insight-card.spending {
+  grid-column: 1 !important;
+}
+
+.ac-insight-card.timeline {
+  grid-column: 2 !important;
+}
+
+/* Insight headers */
+
+.ac-insight-title {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+
+  min-width: 0 !important;
+  min-height: 42px !important;
+
+  gap: 10px !important;
+  padding: 8px 12px !important;
+
+  border-bottom: 1px solid var(--ac-border) !important;
+}
+
+.ac-insight-title h3,
+.ac-insight-title small,
+.ac-insight-title span {
+  min-width: 0 !important;
+  max-width: 100% !important;
+
+  margin: 0 !important;
+
+  line-height: 1.25 !important;
+  overflow-wrap: anywhere !important;
+}
+
+.ac-insight-title h3 {
+  font-size: 0.78rem !important;
+}
+
+.ac-insight-title button {
+  flex: 0 0 auto !important;
+
+  width: auto !important;
+  min-width: 0 !important;
+  min-height: 29px !important;
+
+  padding: 5px 9px !important;
+
+  font-size: 0.63rem !important;
+  white-space: nowrap !important;
+}
+
+/* ---------------------------------------------------------
+   STATEMENT OVERVIEW
+   --------------------------------------------------------- */
+
 .ac-statement-grid {
-  min-width: 0;
-  min-height: 102px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(105px, 0.78fr);
+  display: grid !important;
+
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr))
+    minmax(160px, 0.75fr) !important;
+
+  min-width: 0 !important;
+  min-height: 118px !important;
+  height: auto !important;
+}
+
+.ac-statement-grid > * {
+  min-width: 0 !important;
 }
 
 .ac-statement-grid .ac-metric {
-  padding: 9px 12px;
-}
-
-.ac-statement-grid .ac-metric:nth-child(2),
-.ac-statement-grid .ac-metric:nth-child(4) {
-  border-right: 1px solid var(--line);
+  min-height: 58px !important;
+  padding: 9px 12px !important;
 }
 
 .ac-days-due {
-  grid-column: 3;
-  grid-row: 1 / span 2;
-  display: grid;
-  place-items: center;
-  padding: 10px;
+  grid-column: 3 !important;
+  grid-row: 1 / span 2 !important;
+
+  display: grid !important;
+  place-items: center !important;
+
+  min-width: 0 !important;
+
+  gap: 4px !important;
+  padding: 12px !important;
+
+  text-align: center !important;
 }
 
 .ac-days-due > span {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-  color: var(--green);
+  display: flex !important;
+  align-items: baseline !important;
+  justify-content: center !important;
+
+  max-width: 100% !important;
+
+  gap: 4px !important;
+  flex-wrap: wrap !important;
 }
 
-.ac-days-due b { font-size: 1.55rem; }
-.ac-days-due em {
-  color: var(--muted);
-  font-size: 0.7rem;
-  font-style: normal;
+.ac-days-due b {
+  font-size: 1.6rem !important;
+  line-height: 1 !important;
 }
 
-/* Spending by Category */
+.ac-days-due em,
+.ac-days-due small,
+.ac-days-due span {
+  max-width: 100% !important;
+  overflow-wrap: anywhere !important;
+}
+
+/* ---------------------------------------------------------
+   SPENDING BY CATEGORY
+   --------------------------------------------------------- */
+
+.ac-insight-card.spending {
+  min-width: 0 !important;
+  min-height: 236px !important;
+}
+
 .ac-spending-body {
-  min-width: 0;
-  min-height: 174px;
-  display: grid;
-  grid-template-columns: 118px minmax(0, 1fr);
-  gap: 10px;
-  align-items: center;
-  padding: 12px;
+  display: grid !important;
+
+  grid-template-columns:
+    minmax(115px, 0.55fr)
+    minmax(250px, 1.45fr) !important;
+
+  align-items: center !important;
+
+  min-width: 0 !important;
+  min-height: 190px !important;
+  height: auto !important;
+
+  gap: 14px !important;
+  padding: 12px 14px !important;
+
+  overflow: visible !important;
 }
 
 .ac-donut {
-  width: 112px;
-  height: 112px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
+  width: 112px !important;
+  height: 112px !important;
+
+  margin-inline: auto !important;
 }
 
 .ac-donut > span {
-  width: 66px;
-  height: 66px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: #fff;
+  width: 67px !important;
+  height: 67px !important;
+
+  text-align: center !important;
 }
 
+.ac-donut strong,
 .ac-donut small {
-  color: var(--muted);
-  font-size: 0.62rem;
+  max-width: 100% !important;
+
+  line-height: 1.15 !important;
+  overflow-wrap: anywhere !important;
 }
 
 .ac-spending-list {
-  min-width: 0;
-  display: grid;
-  gap: 7px;
+  display: grid !important;
+
+  min-width: 0 !important;
+
+  gap: 8px !important;
 }
 
 .ac-spending-list > div {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: 8px minmax(0, 1fr) auto auto;
-  gap: 7px;
-  align-items: center;
-  font-size: 0.69rem;
+  display: grid !important;
+
+  grid-template-columns:
+    9px
+    minmax(110px, 1fr)
+    minmax(75px, auto)
+    minmax(42px, auto) !important;
+
+  align-items: center !important;
+
+  min-width: 0 !important;
+
+  gap: 8px !important;
+
+  font-size: 0.7rem !important;
 }
 
-.ac-spending-list i {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
+.ac-spending-list > div > * {
+  min-width: 0 !important;
 }
 
 .ac-spending-list span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.2 !important;
+  overflow-wrap: anywhere !important;
 }
 
+.ac-spending-list strong,
 .ac-spending-list em {
-  color: var(--muted);
-  font-style: normal;
+  justify-self: end !important;
+
+  line-height: 1.2 !important;
+  white-space: nowrap !important;
 }
 
-/* Payment Due Timeline */
+/* ---------------------------------------------------------
+   PAYMENT TIMELINE
+   --------------------------------------------------------- */
+
+.ac-insight-card.timeline {
+  min-width: 0 !important;
+  min-height: 236px !important;
+}
+
 .ac-timeline {
-  position: relative;
-  display: grid;
-  gap: 0;
-  padding: 7px 12px 6px;
+  position: relative !important;
+
+  display: grid !important;
+
+  min-width: 0 !important;
+
+  gap: 0 !important;
+  padding: 6px 11px !important;
 }
 
 .ac-timeline::before {
-  content: "";
-  position: absolute;
-  top: 22px;
-  bottom: 22px;
-  left: 20px;
-  border-left: 1px dashed #b7c7c0;
+  content: "" !important;
+
+  position: absolute !important;
+  top: 23px !important;
+  bottom: 23px !important;
+  left: 20px !important;
+
+  border-left: 1px dashed #b8c8c1 !important;
 }
 
 .ac-timeline > div {
-  position: relative;
-  min-width: 0;
-  min-height: 43px;
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) 20px;
-  gap: 8px;
-  align-items: center;
+  position: relative !important;
+  z-index: 1 !important;
+
+  display: grid !important;
+
+  grid-template-columns:
+    18px
+    minmax(0, 1fr)
+    18px !important;
+
+  align-items: center !important;
+
+  min-width: 0 !important;
+  min-height: 44px !important;
+
+  gap: 8px !important;
 }
 
 .ac-timeline > div > svg {
-  z-index: 1;
-  width: 16px;
-  color: #7d9098;
-  background: #fff;
-}
+  width: 15px !important;
+  height: 15px !important;
 
-.ac-timeline > div.done > svg { color: var(--green); }
+  background: #fff !important;
+}
 
 .ac-timeline > div span {
-  min-width: 0;
-  display: grid;
-  gap: 1px;
+  min-width: 0 !important;
+  max-width: 100% !important;
 }
 
-.ac-timeline > div span b {
-  font-size: 0.68rem;
+.ac-timeline b,
+.ac-timeline small {
+  max-width: 100% !important;
+
+  line-height: 1.2 !important;
+  overflow-wrap: anywhere !important;
+}
+
+.ac-timeline b {
+  font-size: 0.67rem !important;
 }
 
 .ac-timeline small {
-  color: var(--muted);
-  font-size: 0.62rem;
-}
-
-.ac-timeline-status {
-  display: grid;
-  place-items: center;
-  color: var(--muted);
-}
-
-.ac-timeline-status svg {
-  width: 15px;
+  font-size: 0.62rem !important;
 }
 
 .ac-due-alert {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin: 0 10px 9px;
-  padding: 7px 10px;
-  border-radius: 7px;
-  background: var(--red-soft);
-  color: var(--red);
-  font-size: 0.68rem;
+  display: flex !important;
+  align-items: center !important;
+
+  min-width: 0 !important;
+
+  gap: 7px !important;
+  margin: 0 10px 9px !important;
+  padding: 8px 10px !important;
+
+  border-radius: 8px !important;
+
+  font-size: 0.65rem !important;
+
+  overflow: hidden !important;
 }
 
-.ac-due-alert svg { width: 15px; }
+.ac-due-alert > * {
+  min-width: 0 !important;
+}
 
-/* Account Health */
+.ac-due-alert span,
+.ac-due-alert strong {
+  max-width: 100% !important;
+  overflow-wrap: anywhere !important;
+}
+
+/* ---------------------------------------------------------
+   ACCOUNT HEALTH
+   --------------------------------------------------------- */
+
 .ac-health-grid {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  padding: 5px 8px 8px;
+  display: grid !important;
+
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+
+  width: 100% !important;
+  min-width: 0 !important;
+
+  padding: 5px 8px 8px !important;
 }
 
 .ac-health-item {
-  min-width: 0;
-  display: flex;
-  gap: 7px;
-  align-items: center;
-  padding: 6px 9px;
-  border-right: 1px solid var(--line);
+  display: flex !important;
+  align-items: center !important;
+
+  min-width: 0 !important;
+
+  gap: 8px !important;
+  padding: 8px 11px !important;
+
+  border-right: 1px solid var(--ac-border) !important;
 }
 
-.ac-health-item:last-child { border-right: 0; }
+.ac-health-item:last-child {
+  border-right: 0 !important;
+}
 
 .ac-health-item > i {
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
-  display: grid;
-  place-items: center;
-  border: 3px solid var(--green-soft);
-  border-radius: 50%;
-  color: var(--green);
+  display: grid !important;
+  place-items: center !important;
+
+  flex: 0 0 34px !important;
+
+  width: 34px !important;
+  height: 34px !important;
 }
 
-.ac-health-item svg { width: 14px; }
+.ac-health-item > span {
+  display: grid !important;
 
-.ac-health-item span {
-  min-width: 0;
-  display: grid;
-  gap: 1px;
+  min-width: 0 !important;
+  max-width: 100% !important;
+
+  gap: 1px !important;
+}
+
+.ac-health-item small,
+.ac-health-item b,
+.ac-health-item em {
+  max-width: 100% !important;
+
+  line-height: 1.2 !important;
+  overflow-wrap: anywhere !important;
 }
 
 .ac-health-item small,
 .ac-health-item em {
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 0.6rem;
-  font-style: normal;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 0.59rem !important;
 }
 
 .ac-health-item b {
-  color: var(--green);
-  font-size: 0.7rem;
+  font-size: 0.68rem !important;
 }
 
-/* Bank-account fallback panels */
-.ac-bank-kpis {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.ac-bank-kpis .ac-summary-metric {
-  border-bottom: 1px solid var(--line);
-}
-
-.ac-recent-list {
-  display: grid;
-  padding: 6px 12px 10px;
-}
-
-.ac-recent-list > div {
-  min-width: 0;
-  min-height: 52px;
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-  border-bottom: 1px solid var(--line-soft);
-}
-
-.ac-recent-list > div > i {
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  border-radius: 9px;
-}
-
-.ac-recent-list > div > i.income {
-  background: var(--green-soft);
-  color: var(--green);
-}
-
-.ac-recent-list > div > i.expense {
-  background: var(--red-soft);
-  color: var(--red);
-}
-
-.ac-recent-list svg { width: 15px; }
-
-.ac-recent-list span {
-  min-width: 0;
-  display: grid;
-  gap: 2px;
-}
-
-.ac-recent-list small {
-  color: var(--muted);
-  font-size: 0.66rem;
-}
-
-/* =========================================================
+/* ---------------------------------------------------------
    TRANSACTION HISTORY
-   ========================================================= */
+   --------------------------------------------------------- */
 
 .ac-history {
-  width: 100%;
-  min-width: 0;
+  width: 100% !important;
+  min-width: 0 !important;
+
+  overflow: hidden !important;
+}
+
+.ac-history-title {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+
+  min-width: 0 !important;
+  min-height: 46px !important;
+
+  gap: 10px !important;
+  padding: 7px 13px !important;
+}
+
+.ac-history-title > * {
+  min-width: 0 !important;
 }
 
 .ac-history-filters {
-  min-width: 0;
-  display: flex;
-  gap: 2px;
-  overflow-x: auto;
-  padding: 3px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: var(--surface-soft);
-  scrollbar-width: none;
-}
-
-.ac-history-filters::-webkit-scrollbar { display: none; }
-
-.ac-history-filters button {
-  min-height: 28px;
-  border: 0;
-  border-radius: 7px;
-  padding: 0 10px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 0.68rem;
-  white-space: nowrap;
-}
-
-.ac-history-filters button.active {
-  background: var(--green);
-  color: #fff;
-}
-
-.ac-history-export {
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fff;
-  color: var(--muted);
-}
-
-.ac-history-export svg { width: 15px; }
-
-/* Optional billing-cycle strip from the reference */
-.ac-cycle-summary {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 22px;
-  margin: 0 12px 5px;
-  padding: 9px 14px;
-  border-radius: 7px;
-  background: linear-gradient(90deg, #edf8ef, #ffffff);
-}
-
-.ac-cycle-summary > div:first-child {
-  min-width: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 14px;
-}
-
-.ac-cycle-summary > div:first-child strong {
-  width: 100%;
-  font-size: 0.72rem;
-}
-
-.ac-cycle-summary span {
-  color: var(--muted);
-  font-size: 0.64rem;
-}
-
-.ac-cycle-summary > div:not(:first-child) {
-  display: grid;
-  justify-items: end;
-  gap: 1px;
-}
-
-.ac-cycle-summary > div:not(:first-child) strong {
-  font-size: 0.78rem;
-}
-
-.ac-history-table-wrap {
-  width: 100%;
-  min-width: 0;
-  overflow-x: auto;
+  max-width: 100% !important;
 }
 
 .ac-history-head,
 .ac-history-row {
-  min-width: 0;
-  display: grid;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 14px;
-}
+  min-width: 1020px !important;
 
-/* Includes a final 30px menu/action column */
-.ac-history-head.credit,
-.ac-history-row.credit {
-  grid-template-columns:
-    115px
-    minmax(220px, 1.5fr)
-    100px
-    minmax(150px, 1fr)
-    minmax(170px, 1.05fr)
-    115px
-    90px
-    30px;
-}
-
-.ac-history-head.bank,
-.ac-history-row.bank {
-  grid-template-columns:
-    115px
-    minmax(220px, 1.55fr)
-    105px
-    minmax(150px, 1fr)
-    125px
-    90px
-    30px;
-}
-
-.ac-history-head {
-  background: #fafcfb;
-  color: var(--muted);
-  font-size: 0.64rem;
-  font-weight: 700;
-  text-transform: uppercase;
+  gap: 10px !important;
+  padding: 9px 14px !important;
 }
 
 .ac-history-row {
-  min-height: 52px;
-  border-top: 1px solid var(--line-soft);
+  min-height: 52px !important;
 }
 
-.ac-history-row:hover { background: #f8fbfa; }
+/* ---------------------------------------------------------
+   RESPONSIVE — SMALLER DESKTOP
+   --------------------------------------------------------- */
 
-.ac-history-row > * {
-  min-width: 0;
-}
-
-.ac-history-row > span:nth-child(2) {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.ac-history-row em {
-  justify-self: start;
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: var(--green-soft);
-  color: var(--green);
-  font-size: 0.66rem;
-  font-style: normal;
-}
-
-.ac-history-menu {
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--muted);
-}
-
-.ac-history-menu:hover {
-  background: var(--surface-soft);
-  color: var(--ink);
-}
-
-.ac-history-menu svg { width: 15px; }
-
-.ac-empty {
-  padding: 24px;
-  color: var(--muted);
-  text-align: center;
-}
-
-/* =========================================================
-   RESPONSIVE BEHAVIOR
-   ========================================================= */
-
-@media (max-width: 1500px) {
+@media (max-width: 1450px) {
   .ac-summary-strip {
     grid-template-columns:
-      minmax(225px, 1.25fr)
-      repeat(4, minmax(135px, 1fr))
-      minmax(220px, auto);
+      minmax(220px, 1.25fr)
+      repeat(4, minmax(145px, 1fr))
+      minmax(210px, auto) !important;
+  }
+
+  .ac-summary-main,
+  .ac-summary-metric {
+    padding-inline: 12px !important;
+  }
+
+  .ac-summary-main strong {
+    font-size: 1.25rem !important;
+  }
+
+  .ac-summary-metric strong {
+    font-size: 0.88rem !important;
   }
 
   .ac-mini-card {
-    flex-basis: calc((100% - 30px) / 4);
-  }
-}
-
-@media (max-width: 1280px) {
-  .ac-summary-strip {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .ac-summary-main {
-    grid-column: span 2;
-  }
-
-  .ac-view-filter {
-    justify-self: start;
-  }
-
-  .ac-insights-panel {
-    grid-template-columns: 1fr;
-  }
-
-  .ac-insights-panel > * {
-    grid-column: 1 !important;
-  }
-
-  .ac-mini-card {
-    flex-basis: calc((100% - 20px) / 3);
-  }
-}
-
-@media (max-width: 1080px) {
-  .ac-main-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .ac-insights-panel {
-    grid-template-columns: minmax(0, 1.2fr) minmax(240px, 0.8fr);
-  }
-
-  .ac-insights-panel > .statement,
-  .ac-insights-panel > .health,
-  .ac-insights-panel > .bank-overview,
-  .ac-insights-panel > .recent {
-    grid-column: 1 / -1 !important;
-  }
-
-  .ac-insights-panel > .spending { grid-column: 1 !important; }
-  .ac-insights-panel > .timeline { grid-column: 2 !important; }
-}
-
-@media (max-width: 900px) {
-  .ac-summary-strip {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .ac-summary-main {
-    grid-column: 1 / -1;
+    flex-basis: 210px !important;
   }
 
   .ac-selected-detail {
-    grid-template-columns: 1fr;
-  }
-
-  .ac-detail-content {
-    border-top: 1px solid var(--line);
-    border-left: 0;
-  }
-
-  .ac-history-table-wrap {
-    overflow-x: auto;
-  }
-
-  .ac-history-head.credit,
-  .ac-history-row.credit {
-    min-width: 1040px;
-  }
-
-  .ac-history-head.bank,
-  .ac-history-row.bank {
-    min-width: 900px;
-  }
-}
-
-@media (max-width: 760px) {
-  .ac-insights-panel {
-    grid-template-columns: 1fr;
-  }
-
-  .ac-insights-panel > * {
-    grid-column: 1 !important;
-  }
-
-  .ac-mini-card {
-    flex: 0 0 190px;
-    max-width: none;
+    grid-template-columns:
+      minmax(280px, 0.7fr)
+      minmax(0, 1.3fr) !important;
   }
 
   .ac-detail-actions {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .ac-health-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .ac-health-item:nth-child(2) {
-    border-right: 0;
-  }
-
-  .ac-health-item:nth-child(-n + 2) {
-    border-bottom: 1px solid var(--line);
-  }
-
-  .ac-cycle-summary {
-    grid-template-columns: 1fr auto;
-  }
-
-  .ac-cycle-summary > div:first-child {
-    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(135px, 1fr)) !important;
   }
 }
 
-@media (max-width: 620px) {
+/* ---------------------------------------------------------
+   RESPONSIVE — TABLET / NARROW DESKTOP
+   --------------------------------------------------------- */
+
+@media (max-width: 1180px) {
+  .ac-dashboard {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
   .ac-summary-strip {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
   }
 
   .ac-summary-main {
-    grid-column: auto;
+    grid-column: span 2 !important;
   }
 
   .ac-view-filter {
-    max-width: calc(100% - 20px);
-    flex-wrap: wrap;
+    justify-self: start !important;
   }
 
-  .ac-credit-limit-strip,
-  .ac-detail-summary,
-  .ac-health-grid,
-  .ac-bank-kpis {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .ac-summary-strip,
+  .ac-wallet-panel,
+  .ac-insight-card.statement,
+  .ac-insight-card.spending,
+  .ac-insight-card.timeline,
+  .ac-insight-card.health,
+  .ac-history {
+    grid-column: 1 / -1 !important;
   }
 
-  .ac-credit-limit-strip .ac-gauge {
-    grid-column: 1 / -1;
-    border-top: 1px solid var(--line);
+  .ac-selected-detail {
+    grid-template-columns:
+      minmax(280px, 0.75fr)
+      minmax(0, 1.25fr) !important;
   }
 
   .ac-spending-body {
-    grid-template-columns: 1fr;
+    grid-template-columns:
+      minmax(120px, 0.6fr)
+      minmax(250px, 1.4fr) !important;
+  }
+}
+
+/* ---------------------------------------------------------
+   RESPONSIVE — MOBILE
+   --------------------------------------------------------- */
+
+@media (max-width: 780px) {
+  .ac-dashboard {
+    gap: 9px !important;
+  }
+
+  .ac-summary-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .ac-summary-main {
+    grid-column: 1 / -1 !important;
+  }
+
+  .ac-view-filter {
+    grid-column: 1 / -1 !important;
+
+    justify-self: stretch !important;
+  }
+
+  .ac-view-filter button {
+    flex: 1 1 0 !important;
+  }
+
+  .ac-section-title {
+    align-items: flex-start !important;
+    flex-direction: column !important;
+  }
+
+  .ac-section-title > button {
+    width: 100% !important;
+  }
+
+  .ac-mini-card {
+    flex: 0 0 205px !important;
+  }
+
+  .ac-selected-detail {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .ac-detail-content {
+    border-top: 1px solid var(--ac-border) !important;
+    border-left: 0 !important;
+  }
+
+  .ac-credit-limit-strip {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr))
+      minmax(80px, 0.5fr) !important;
+  }
+
+  .ac-detail-summary.compact,
+  .ac-health-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .ac-detail-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .ac-statement-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .ac-days-due {
+    grid-column: 1 / -1 !important;
+    grid-row: auto !important;
+
+    border-top: 1px solid var(--ac-border) !important;
+  }
+
+  .ac-spending-body {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .ac-spending-list > div {
+    grid-template-columns:
+      9px
+      minmax(90px, 1fr)
+      auto
+      auto !important;
   }
 
   .ac-donut {
-    margin-inline: auto;
+    margin-inline: auto !important;
+  }
+}
+
+/* ---------------------------------------------------------
+   VERY SMALL MOBILE
+   --------------------------------------------------------- */
+
+@media (max-width: 520px) {
+  .ac-summary-strip {
+    grid-template-columns: minmax(0, 1fr) !important;
   }
 
-  .ac-history-title {
-    align-items: flex-start;
-    flex-direction: column;
+  .ac-summary-main,
+  .ac-view-filter {
+    grid-column: 1 !important;
   }
 
-  .ac-cycle-summary {
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
+  .ac-carousel-wrap {
+    padding-inline: 24px !important;
+  }
+
+  .ac-mini-card {
+    flex-basis: 195px !important;
+    min-width: 195px !important;
+  }
+
+  .ac-credit-limit-strip,
+  .ac-detail-summary.compact,
+  .ac-health-grid,
+  .ac-detail-actions {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .ac-metric,
+  .ac-health-item {
+    border-right: 0 !important;
+    border-bottom: 1px solid var(--ac-border) !important;
+  }
+
+  .ac-metric:last-child,
+  .ac-health-item:last-child {
+    border-bottom: 0 !important;
   }
 }
