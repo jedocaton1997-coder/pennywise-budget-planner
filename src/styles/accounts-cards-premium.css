@@ -89,6 +89,116 @@
 .ac-history td{padding:12px 14px}
 .ac-history tbody tr{transition:background .16s ease}
 .ac-history tbody tr:hover{background:#f4faf7}
+
+/* Account card readability and distinct bank colors */
+.ac-mini-card.bank,
+.ac-large-bank-card{
+  color:#fff;
+  text-shadow:0 1px 1px rgba(0,0,0,.12);
+}
+.ac-mini-card.bank:nth-child(6n+1){--ac-card-color:#0f8f72;background:linear-gradient(145deg,#1aa887,#08735c)}
+.ac-mini-card.bank:nth-child(6n+2){--ac-card-color:#2563a9;background:linear-gradient(145deg,#397ac3,#1f4f8d)}
+.ac-mini-card.bank:nth-child(6n+3){--ac-card-color:#187f95;background:linear-gradient(145deg,#28a4b9,#126a7d)}
+.ac-mini-card.bank:nth-child(6n+4){--ac-card-color:#6b58b5;background:linear-gradient(145deg,#806ccc,#57469b)}
+.ac-mini-card.bank:nth-child(6n+5){--ac-card-color:#c27a16;background:linear-gradient(145deg,#e19b39,#a8610c)}
+.ac-mini-card.bank:nth-child(6n+6){--ac-card-color:#b34b67;background:linear-gradient(145deg,#d35f7d,#963b55)}
+.ac-mini-card.bank>b,
+.ac-mini-card.bank>strong,
+.ac-mini-card.bank>span,
+.ac-mini-card.bank>div>em{
+  color:#fff!important;
+  opacity:1;
+}
+.ac-mini-card.bank>span{color:rgba(255,255,255,.86)!important}
+.ac-mini-card.bank>div>em{background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.2)}
+.ac-large-bank-card span strong,
+.ac-large-bank-card span small,
+.ac-large-bank-card>em,
+.ac-large-bank-card>strong,
+.ac-large-bank-card>b{
+  color:#fff!important;
+  opacity:1;
+}
+.ac-large-bank-card span small,
+.ac-large-bank-card>em{color:rgba(255,255,255,.82)!important}
+.ac-large-bank-card span strong{font-size:16px;font-weight:800}
+.ac-large-bank-card span small{font-size:12px;font-weight:600}
+.ac-large-bank-card{background:radial-gradient(circle at 95% 10%,rgba(255,255,255,.18),transparent 36%),linear-gradient(145deg,#1aa887,#08735c)}
+
+/* Keep account names and values readable inside compact layouts */
+.ac-mini-card>b,
+.ac-mini-card>span,
+.ac-mini-card>strong{
+  position:relative;
+  z-index:1;
+}
+.ac-mini-card>b{line-height:1.3}
+.ac-mini-card>span{line-height:1.35}
+.ac-large-bank-card>div,
+.ac-large-credit-card>div,
+.ac-large-bank-card>em,
+.ac-large-credit-card>em,
+.ac-large-bank-card>strong,
+.ac-large-credit-card>strong,
+.ac-large-bank-card>b,
+.ac-large-credit-card>b{position:relative;z-index:1}
+.ac-large-bank-card>strong,
+.ac-large-credit-card>strong,
+.ac-large-bank-card>b,
+.ac-large-credit-card>b{position:absolute}
+
+/* Modal containment and transfer form fixes */
+.modal-backdrop{
+  padding:24px;
+  overflow:auto;
+}
+.modal{
+  width:min(100%,620px);
+  max-width:calc(100vw - 32px);
+  max-height:calc(100vh - 48px);
+  overflow:auto;
+  border-radius:18px;
+}
+.modal .modal-head{
+  position:sticky;
+  top:0;
+  z-index:5;
+  background:rgba(255,255,255,.97);
+  backdrop-filter:blur(10px);
+}
+.modal form,
+.modal .form-grid,
+.modal label{
+  min-width:0;
+}
+.modal .form-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+.modal input,
+.modal select,
+.modal textarea{
+  width:100%;
+  min-width:0;
+  max-width:100%;
+  box-sizing:border-box;
+}
+.modal select{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.modal .submit{
+  width:100%;
+  min-height:46px;
+}
+@media (max-width:680px){
+  .modal-backdrop{padding:12px}
+  .modal{max-width:calc(100vw - 24px);max-height:calc(100vh - 24px)}
+  .modal .form-grid{grid-template-columns:1fr}
+}
+
 @media (min-width:1500px){
   .ac-dashboard{width:min(100%,1720px)}
   .ac-main-grid{grid-template-columns:minmax(0,1.22fr) minmax(500px,.9fr)}
