@@ -4,6 +4,7 @@ import App from './App'
 import './styles.css'
 import './styles/bank-components.css'
 import './styles/glass-system.css'
+import './styles/accounts-cards-premium.css'
 import { initializeFirebaseAnalytics } from './lib/firebase'
 import AuthGate from './AuthGate'
 
