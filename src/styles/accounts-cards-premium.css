@@ -241,3 +241,57 @@
   .ac-history{overflow-x:auto}
   .ac-history table{min-width:780px}
 }
+
+/* Compact the right column and keep Spending by Category content at the top */
+.ac-main-grid{align-items:stretch}
+.ac-wallet-panel{height:100%}
+.ac-insights-panel{align-content:start;grid-auto-rows:min-content}
+.ac-insight-card.spending{
+  display:flex;
+  flex-direction:column;
+  align-self:start;
+  min-height:0;
+}
+.ac-insight-card.spending .ac-insight-title{
+  align-items:flex-start;
+  min-height:auto;
+  padding:12px 14px 9px;
+}
+.ac-insight-card.spending .ac-insight-title h3{
+  max-width:none;
+  white-space:normal;
+  line-height:1.15;
+}
+.ac-insight-card.spending .ac-insight-title small{
+  margin-top:2px;
+  white-space:nowrap;
+}
+.ac-insight-card.spending .ac-spending-body{
+  align-items:start;
+  min-height:0;
+  padding:12px 14px 14px;
+}
+.ac-insight-card.spending .ac-donut{
+  align-self:start;
+  margin:0 auto;
+}
+.ac-insight-card.spending .ac-spending-list{
+  align-content:start;
+  max-height:168px;
+  overflow:auto;
+  padding-right:3px;
+}
+.ac-insight-card.spending .ac-spending-list>div{
+  min-height:25px;
+}
+@media (min-width:1281px){
+  .ac-insight-card.spending .ac-spending-body{
+    grid-template-columns:118px minmax(0,1fr);
+    gap:10px;
+  }
+  .ac-insight-card.spending .ac-donut{width:112px;height:112px}
+  .ac-insight-card.spending .ac-donut>span{width:66px;height:66px}
+  .ac-insight-card.spending .ac-spending-list>div{font-size:9.5px;padding:3px 2px}
+  .ac-health-grid{padding:5px}
+  .ac-health-item{padding:7px 8px}
+}
