@@ -1,0 +1,83 @@
+/* Final visibility fix for the Accounts & Cards spending panel. */
+.ac-insight-card.spending{
+  container-type:inline-size;
+  overflow:visible;
+}
+
+.ac-insight-card.spending .ac-insight-title{
+  min-width:0;
+}
+
+.ac-insight-card.spending .ac-insight-title h3,
+.ac-insight-card.spending .ac-insight-title small{
+  min-width:0;
+}
+
+.ac-insight-card.spending .ac-spending-body{
+  width:100%;
+  min-width:0;
+  height:auto;
+  overflow:visible;
+}
+
+.ac-insight-card.spending .ac-spending-list{
+  width:100%;
+  min-width:0;
+  overflow:visible;
+}
+
+.ac-insight-card.spending .ac-spending-list>div{
+  width:100%;
+  min-width:0;
+  grid-template-columns:9px minmax(72px,1fr) minmax(72px,auto) minmax(38px,auto);
+}
+
+.ac-insight-card.spending .ac-spending-list span{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.ac-insight-card.spending .ac-spending-list strong,
+.ac-insight-card.spending .ac-spending-list em{
+  min-width:0;
+  font-size:10px;
+  text-align:right;
+  white-space:nowrap;
+}
+
+@container (max-width:520px){
+  .ac-insight-card.spending .ac-insight-title{
+    align-items:flex-start;
+  }
+
+  .ac-insight-card.spending .ac-spending-body{
+    grid-template-columns:1fr;
+    gap:16px;
+    min-height:0;
+    padding:16px;
+  }
+
+  .ac-insight-card.spending .ac-donut{
+    margin:2px auto 4px;
+  }
+
+  .ac-insight-card.spending .ac-spending-list{
+    display:grid;
+    gap:4px;
+  }
+
+  .ac-insight-card.spending .ac-spending-list>div{
+    grid-template-columns:9px minmax(0,1fr) auto auto;
+    gap:8px;
+    padding:7px 4px;
+    border-top:1px solid #edf3f0;
+  }
+}
+
+@media (max-width:1280px){
+  .ac-insights-panel>.spending{
+    min-width:0;
+  }
+}
