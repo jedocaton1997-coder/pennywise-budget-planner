@@ -1,8 +1,42 @@
-import React, { useMemo, useState } from "react";
-import "./AccountsCards.css";
+import { useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
+import type {
+  CardConfig,
+  CardPayment,
+  CardStatement,
+  CardTransaction,
+} from "./domain/creditCardEngine";
+import {
+  computeCard,
+  peso,
+  statementCutoffDate,
+} from "./domain/creditCardEngine";
 
-type AccountKind = "bank" | "credit";
-type TransactionType =
+type BankAccount = {
+  id: number;
+  name: string;
+  bank: string;
+  type: string;
+  balance: number;
+  last4: string;
+  customLogo?: string;
+};
+
+type AccountTransaction = {
+  id: number;
+  accountId: number;
+  date: string;
+  description: string;
+  type: "Income" | "Expense" | "Transfer";
+  category: string;
+  amount: number;
+  status: "Posted";
+  notes?: string;
+};
+
+type DashboardFilter = "all" | "bank" | "credit";
+type TransactionFilter =
+  | "all"
   | "purchase"
   | "payment"
   | "refund"
@@ -11,653 +45,997 @@ type TransactionType =
   | "interest"
   | "adjustment";
 
-type TransactionStatus = "posted" | "pending" | "processing" | "reversed" | "failed";
+type DashboardItem =
+  | {
+      key: string;
+      kind: "bank";
+      id: number;
+      name: string;
+      issuer: string;
+      maskedNumber: string;
+      balance: number;
+      color: string;
+      account: BankAccount;
+    }
+  | {
+      key: string;
+      kind: "credit";
+      id: number;
+      name: string;
+      issuer: string;
+      maskedNumber: string;
+      balance: number;
+      color: string;
+      card: CardConfig;
+    };
 
-export interface FinanceAccount {
-  id: string;
-  kind: AccountKind;
-  issuer: string;
-  name: string;
-  maskedNumber: string;
-  balance: number;
-  status: "active" | "upcoming" | "paid" | "overdue";
-  color: string;
-  logoText?: string;
-
-  accountType?: string;
-  availableBalance?: number;
-  interestRate?: number;
-  lastTransactionDate?: string;
-
-  creditLimit?: number;
-  statementBalance?: number;
-  minimumDue?: number;
-  statementDate?: string;
-  paymentDueDate?: string;
-  network?: string;
-  processingDate?: string;
-  paidDate?: string;
-}
-
-export interface FinanceTransaction {
-  id: string;
-  accountId: string;
-  date: string;
-  description: string;
-  type: TransactionType;
-  category: string;
-  amount: number;
-  status: TransactionStatus;
-  note?: string;
-  reviewed?: boolean;
-  installment?: {
-    originalAmount: number;
-    monthlyAmount: number;
-    current: number;
-    total: number;
-    remainingBalance: number;
-  };
-}
-
-interface AccountsCardsProps {
-  accounts?: FinanceAccount[];
-  transactions?: FinanceTransaction[];
-  otherLiabilities?: number;
-  onAddAccount?: () => void;
-  onTransfer?: () => void;
-  onQuickPay?: () => void;
-  onAddTransaction?: (account: FinanceAccount) => void;
-  onPayCard?: (account: FinanceAccount) => void;
-  onViewTransaction?: (transaction: FinanceTransaction) => void;
-}
-
-const peso = new Intl.NumberFormat("en-PH", {
-  style: "currency",
-  currency: "PHP",
-  minimumFractionDigits: 2,
-});
-
-const dateFmt = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-  year: "numeric",
-});
-
-const DEFAULT_ACCOUNTS: FinanceAccount[] = [
-  {
-    id: "bpi",
-    kind: "credit",
-    issuer: "BPI",
-    name: "BPI Gold Rewards",
-    maskedNumber: "•••• 5555",
-    balance: 21584.21,
-    status: "upcoming",
-    color: "#d72632",
-    logoText: "BPI",
-    creditLimit: 300000,
-    statementBalance: 8455.75,
-    minimumDue: 1500,
-    statementDate: "2026-07-13",
-    paymentDueDate: "2026-08-03",
-    processingDate: "2026-07-24",
-    network: "VISA",
-  },
-  {
-    id: "bdo",
-    kind: "credit",
-    issuer: "BDO",
-    name: "BDO Platinum",
-    maskedNumber: "•••• 0629",
-    balance: 2684.55,
-    status: "upcoming",
-    color: "#315fa8",
-    logoText: "BDO",
-    creditLimit: 180000,
-    statementBalance: 2684.55,
-    minimumDue: 500,
-    statementDate: "2026-07-12",
-    paymentDueDate: "2026-08-02",
-    network: "VISA",
-  },
-  {
-    id: "rcbc",
-    kind: "bank",
-    issuer: "RCBC",
-    name: "RCBC Checking",
-    maskedNumber: "•••• 2340",
-    balance: 11289,
-    status: "active",
-    color: "#167d6a",
-    logoText: "RCBC",
-    accountType: "Checking",
-    availableBalance: 11289,
-    interestRate: 0.1,
-    lastTransactionDate: "2026-07-30",
-  },
-  {
-    id: "gotyme",
-    kind: "bank",
-    issuer: "GoTyme",
-    name: "GoTyme Digital Wallet",
-    maskedNumber: "•••• 9184",
-    balance: 412.54,
-    status: "active",
-    color: "#1197a6",
-    logoText: "GO",
-    accountType: "Digital wallet",
-    availableBalance: 412.54,
-    lastTransactionDate: "2026-07-29",
-  },
-];
-
-const DEFAULT_TRANSACTIONS: FinanceTransaction[] = [
-  {
-    id: "t1",
-    accountId: "bpi",
-    date: "2026-07-30",
-    description: "Baliwag Lechon Manok",
-    type: "purchase",
-    category: "Food / Food Delivery",
-    amount: 709,
-    status: "posted",
-  },
-  {
-    id: "t2",
-    accountId: "bpi",
-    date: "2026-07-26",
-    description: "Bulalo World Express",
-    type: "purchase",
-    category: "Food / Groceries",
-    amount: 374,
-    status: "posted",
-  },
-  {
-    id: "t3",
-    accountId: "bpi",
-    date: "2026-07-23",
-    description: "ANGKAS MANILA PH",
-    type: "purchase",
-    category: "Transportation",
-    amount: 210,
-    status: "posted",
-  },
-  {
-    id: "t4",
-    accountId: "bpi",
-    date: "2026-07-20",
-    description: "Monthly installment",
-    type: "installment",
-    category: "Shopping",
-    amount: 2047.05,
-    status: "posted",
-    installment: {
-      originalAmount: 12282.3,
-      monthlyAmount: 2047.05,
-      current: 2,
-      total: 6,
-      remainingBalance: 8188.2,
-    },
-  },
-];
-
-const CHART_COLORS = ["#24a36f", "#6e9fdb", "#f3b044", "#ed6d67", "#9a7bd4", "#36b7c9"];
-
-const addDays = (value: string, days: number) => {
-  const d = new Date(`${value}T00:00:00`);
-  d.setDate(d.getDate() + days);
-  return d;
+type Props = {
+  accounts: BankAccount[];
+  cards: CardConfig[];
+  accountTransactions: AccountTransaction[];
+  cardTransactions: CardTransaction[];
+  statements: CardStatement[];
+  payments: CardPayment[];
+  selectedAccountId: number;
+  selectedCardId: number;
+  onSelectAccount: (id: number) => void;
+  onSelectCard: (id: number) => void;
+  hideBalances?: boolean;
+  onAddBankAccount: () => void;
+  onAddCreditCard: () => void;
+  onEditAccount: () => void;
+  onEditCard: () => void;
+  onAddAccountTransaction: () => void;
+  onAddCardTransaction: () => void;
+  onTransfer: () => void;
+  onPayCard: () => void;
+  onViewAccountStatement: () => void;
+  onViewCardStatement: () => void;
 };
 
-const daysBetween = (from: Date, to: Date) =>
-  Math.ceil((to.getTime() - from.getTime()) / 86400000);
+const money = (value: number, hidden = false) =>
+  hidden ? "₱••••••••" : peso(Number.isFinite(value) ? value : 0);
 
-const safeDate = (value?: string) => (value ? new Date(`${value}T00:00:00`) : null);
+const formatDate = (value?: string) => {
+  if (!value) return "—";
+  const date = new Date(`${value}T12:00:00`);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+};
 
-const statusLabel = (value: string) =>
+const daysUntil = (value?: string) => {
+  if (!value) return 0;
+  const due = new Date(`${value}T12:00:00`);
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  return Math.ceil((due.getTime() - today.getTime()) / 86400000);
+};
+
+const accountColor = (index: number) =>
+  ["#168a5b", "#236fa8", "#1697a4", "#415da8", "#6d63b5"][index % 5];
+
+const transactionTypeLabel = (value: string) =>
   value.charAt(0).toUpperCase() + value.slice(1);
 
-export default function AccountsCards({
-  accounts = DEFAULT_ACCOUNTS,
-  transactions = DEFAULT_TRANSACTIONS,
-  otherLiabilities = 0,
-  onAddAccount,
+export default function AccountsCardsDashboard({
+  accounts,
+  cards,
+  accountTransactions,
+  cardTransactions,
+  statements,
+  payments,
+  selectedAccountId,
+  selectedCardId,
+  onSelectAccount,
+  onSelectCard,
+  hideBalances = false,
+  onAddBankAccount,
+  onAddCreditCard,
+  onEditAccount,
+  onEditCard,
+  onAddAccountTransaction,
+  onAddCardTransaction,
   onTransfer,
-  onQuickPay,
-  onAddTransaction,
   onPayCard,
-  onViewTransaction,
-}: AccountsCardsProps) {
-  const [selectedId, setSelectedId] = useState(accounts[0]?.id ?? "");
-  const [accountFilter, setAccountFilter] = useState<"all" | "bank" | "credit">("all");
-  const [transactionFilter, setTransactionFilter] = useState<"all" | TransactionType>("all");
+  onViewAccountStatement,
+  onViewCardStatement,
+}: Props) {
+  const [filter, setFilter] = useState<DashboardFilter>("all");
+  const [transactionFilter, setTransactionFilter] =
+    useState<TransactionFilter>("all");
+  const carouselRef = useRef<HTMLDivElement>(null);
 
-  const selected = accounts.find((item) => item.id === selectedId) ?? accounts[0];
-
-  const filteredAccounts = useMemo(
-    () => accounts.filter((item) => accountFilter === "all" || item.kind === accountFilter),
-    [accounts, accountFilter]
+  const activeCards = useMemo(
+    () => cards.filter((card) => card.active !== false),
+    [cards],
   );
 
-  const selectedTransactions = useMemo(
-    () => transactions.filter((item) => item.accountId === selected?.id),
-    [transactions, selected?.id]
+  const items = useMemo<DashboardItem[]>(
+    () => [
+      ...accounts.map((account, index) => ({
+        key: `bank-${account.id}`,
+        kind: "bank" as const,
+        id: account.id,
+        name: account.name,
+        issuer: account.bank || account.name,
+        maskedNumber: account.last4 ? `•••• ${account.last4}` : "No account number",
+        balance: Number(account.balance) || 0,
+        color: accountColor(index),
+        account,
+      })),
+      ...activeCards.map((card) => {
+        const computed = computeCard(card, cardTransactions, statements, payments);
+        return {
+          key: `credit-${card.id}`,
+          kind: "credit" as const,
+          id: card.id,
+          name: card.name,
+          issuer: card.bank || card.name,
+          maskedNumber: card.last4 ? `•••• ${card.last4}` : "No card number",
+          balance: Math.max(computed.currentBalance, 0),
+          color: card.color || "#334155",
+          card,
+        };
+      }),
+    ],
+    [accounts, activeCards, cardTransactions, statements, payments],
   );
 
-  const visibleTransactions = useMemo(
-    () =>
-      selectedTransactions.filter(
-        (item) => transactionFilter === "all" || item.type === transactionFilter
-      ),
-    [selectedTransactions, transactionFilter]
+  const visibleItems = items.filter(
+    (item) => filter === "all" || item.kind === filter,
   );
 
-  const bankAssets = accounts
-    .filter((item) => item.kind === "bank")
-    .reduce((sum, item) => sum + item.balance, 0);
+  const selectedItem =
+    items.find(
+      (item) =>
+        (item.kind === "bank" && item.id === selectedAccountId) ||
+        (item.kind === "credit" && item.id === selectedCardId),
+    ) ?? items[0];
 
-  const creditUsed = accounts
-    .filter((item) => item.kind === "credit")
-    .reduce((sum, item) => sum + item.balance, 0);
+  const totalAssets = accounts.reduce(
+    (sum, account) => sum + (Number(account.balance) || 0),
+    0,
+  );
 
-  const availableCredit = accounts
-    .filter((item) => item.kind === "credit")
-    .reduce((sum, item) => sum + Math.max((item.creditLimit ?? 0) - item.balance, 0), 0);
+  const totalCreditUsed = activeCards.reduce((sum, card) => {
+    const computed = computeCard(card, cardTransactions, statements, payments);
+    return sum + Math.max(computed.currentBalance, 0);
+  }, 0);
 
-  const upcomingDue = accounts
-    .filter((item) => item.kind === "credit" && item.paymentDueDate && item.status !== "paid")
-    .filter((item) => {
-      const due = safeDate(item.paymentDueDate);
-      return due ? daysBetween(new Date(), due) <= 30 : false;
-    })
-    .reduce((sum, item) => sum + (item.statementBalance ?? item.balance), 0);
+  const totalAvailableCredit = activeCards.reduce((sum, card) => {
+    const computed = computeCard(card, cardTransactions, statements, payments);
+    return sum + Math.max(computed.availableCredit, 0);
+  }, 0);
 
-  const netWorth = bankAssets - creditUsed - otherLiabilities;
+  const upcomingDue = activeCards.reduce((sum, card) => {
+    const computed = computeCard(card, cardTransactions, statements, payments);
+    const due = computed.lastStatement?.dueDate ?? computed.nextDueDate;
+    const days = daysUntil(due);
+    if (days < 0 || days > 30) return sum;
+    return sum + (computed.lastStatement?.remainingDue ?? computed.plannedPayment ?? 0);
+  }, 0);
 
-  const utilization =
-    selected?.kind === "credit" && selected.creditLimit
-      ? Math.min((selected.balance / selected.creditLimit) * 100, 100)
-      : 0;
+  const netWorth = totalAssets - totalCreditUsed;
 
-  const dueDate = safeDate(selected?.paymentDueDate);
-  const daysToDue = dueDate ? daysBetween(new Date(), dueDate) : 0;
+  if (!selectedItem) {
+    return (
+      <section className="ac-dashboard ac-empty">
+        Add a bank account or credit card to begin.
+      </section>
+    );
+  }
 
-  const dueStatus =
-    selected?.status === "paid"
-      ? "Paid"
-      : daysToDue < 0
-      ? "Overdue"
-      : daysToDue <= 7
-      ? "Due Soon"
-      : "Upcoming";
+  const selectedCardComputed =
+    selectedItem.kind === "credit"
+      ? computeCard(
+          selectedItem.card,
+          cardTransactions,
+          statements,
+          payments,
+        )
+      : null;
+
+  const selectedCardStatement = selectedCardComputed?.lastStatement;
+  const selectedDueDate =
+    selectedCardStatement?.dueDate ?? selectedCardComputed?.nextDueDate;
+  const selectedDaysToDue = daysUntil(selectedDueDate);
+  const selectedUtilization = selectedCardComputed?.utilization ?? 0;
+
+  const selectedTransactions =
+    selectedItem.kind === "bank"
+      ? accountTransactions
+          .filter((transaction) => transaction.accountId === selectedItem.id)
+          .map((transaction) => ({
+            id: `bank-${transaction.id}`,
+            date: transaction.date,
+            description: transaction.description,
+            type:
+              transaction.type === "Expense"
+                ? "purchase"
+                : transaction.type === "Income"
+                  ? "adjustment"
+                  : "adjustment",
+            category: transaction.category || transaction.type,
+            amount: transaction.amount,
+            status: transaction.status.toLowerCase(),
+            raw: transaction,
+          }))
+      : cardTransactions
+          .filter((transaction) => transaction.cardId === selectedItem.id)
+          .map((transaction) => ({
+            id: `card-${transaction.id}`,
+            date: transaction.postedDate || transaction.transactionDate,
+            description: transaction.description,
+            type:
+              transaction.type === "credit"
+                ? "adjustment"
+                : transaction.type,
+            category: transaction.category || "Uncategorized",
+            amount: transaction.amount,
+            status: transaction.status,
+            raw: transaction,
+          }));
+
+  const filteredTransactions = selectedTransactions.filter(
+    (transaction) =>
+      transactionFilter === "all" || transaction.type === transactionFilter,
+  );
 
   const eligibleSpending = selectedTransactions.filter(
-    (item) =>
-      item.status === "posted" &&
-      ["purchase", "installment", "fee", "interest"].includes(item.type)
+    (transaction) =>
+      transaction.status === "posted" &&
+      ["purchase", "installment", "fee", "interest"].includes(transaction.type),
   );
 
-  const categoryTotals = eligibleSpending.reduce<Record<string, number>>((acc, item) => {
-    acc[item.category] = (acc[item.category] ?? 0) + Math.abs(item.amount);
-    return acc;
-  }, {});
+  const categoryMap = eligibleSpending.reduce<Record<string, number>>(
+    (result, transaction) => {
+      result[transaction.category] =
+        (result[transaction.category] ?? 0) + Math.abs(transaction.amount);
+      return result;
+    },
+    {},
+  );
 
-  const totalSpending = Object.values(categoryTotals).reduce((sum, value) => sum + value, 0);
+  const categoryTotal = Object.values(categoryMap).reduce(
+    (sum, value) => sum + value,
+    0,
+  );
 
-  const categories = Object.entries(categoryTotals)
+  const chartColors = [
+    "#28a46f",
+    "#6d9ed8",
+    "#efad43",
+    "#e96c67",
+    "#9478ce",
+    "#35b6c6",
+  ];
+
+  const categories = Object.entries(categoryMap)
+    .sort(([, a], [, b]) => b - a)
     .map(([name, amount], index) => ({
       name,
       amount,
-      percent: totalSpending ? (amount / totalSpending) * 100 : 0,
-      color: CHART_COLORS[index % CHART_COLORS.length],
-    }))
-    .sort((a, b) => b.amount - a.amount);
+      percentage: categoryTotal ? (amount / categoryTotal) * 100 : 0,
+      color: chartColors[index % chartColors.length],
+    }));
 
-  const donut = categories.length
+  let runningPercentage = 0;
+  const donutBackground = categories.length
     ? `conic-gradient(${categories
-        .reduce(
-          (parts, item) => {
-            const start = parts.offset;
-            const end = start + item.percent;
-            parts.values.push(`${item.color} ${start}% ${end}%`);
-            parts.offset = end;
-            return parts;
-          },
-          { values: [] as string[], offset: 0 }
-        )
-        .values.join(", ")})`
-    : "conic-gradient(#e8efec 0 100%)";
+        .map((category) => {
+          const start = runningPercentage;
+          runningPercentage += category.percentage;
+          return `${category.color} ${start}% ${runningPercentage}%`;
+        })
+        .join(", ")})`
+    : "conic-gradient(#e6ece9 0 100%)";
 
-  const cycleStart = selected?.statementDate ? safeDate(selected.statementDate) : null;
-  const cycleEnd = cycleStart ? addDays(selected!.statementDate!, 29) : null;
-  const cycleTotal = selectedTransactions
-    .filter((item) => item.status === "posted")
-    .reduce((sum, item) => sum + Math.abs(item.amount), 0);
+  const cycleStart =
+    selectedItem.kind === "credit" && selectedCardComputed
+      ? selectedCardComputed.currentCycleStart
+      : selectedTransactions.at(-1)?.date;
+  const cycleEnd =
+    selectedItem.kind === "credit" && selectedCardComputed
+      ? statementCutoffDate(selectedCardComputed.nextStatementDate)
+      : selectedTransactions[0]?.date;
+  const cycleTotal = selectedTransactions.reduce(
+    (sum, transaction) => sum + Math.abs(transaction.amount),
+    0,
+  );
 
-  if (!selected) {
-    return <div className="ac-empty-state">No accounts are available.</div>;
-  }
+  const selectItem = (item: DashboardItem) => {
+    if (item.kind === "bank") onSelectAccount(item.id);
+    else onSelectCard(item.id);
+  };
+
+  const scrollCarousel = (direction: -1 | 1) =>
+    carouselRef.current?.scrollBy({
+      left: direction * 260,
+      behavior: "smooth",
+    });
 
   return (
-    <main className="accounts-page">
-      <header className="accounts-header">
-        <div>
-          <h1>Accounts &amp; Cards</h1>
-          <p>Manage your savings, checking accounts, and credit cards in one place.</p>
-        </div>
-
-        <div className="header-actions">
-          <button type="button" onClick={onAddAccount}>＋ Add</button>
-          <button type="button" onClick={onTransfer}>⇄ Transfer</button>
-          <button type="button" className="primary" onClick={onQuickPay}>⚡ Quick Pay</button>
-          <button type="button" aria-label="Search">⌕</button>
-          <button type="button" className="notification" aria-label="Notifications">♧<span>7</span></button>
-          <button type="button" aria-label="Profile">◎</button>
-        </div>
-      </header>
-
-      <section className="summary-panel">
-        <SummaryMetric
-          label="Net Worth"
-          value={peso.format(netWorth)}
+    <section className="ac-dashboard">
+      <div className="ac-summary-strip">
+        <SummaryBlock
+          title="Net Worth"
+          value={money(netWorth, hideBalances)}
           note="Assets minus liabilities"
-          tone={netWorth < 0 ? "danger" : "positive"}
+          tone={netWorth < 0 ? "negative" : "positive"}
           chart
         />
-        <SummaryMetric label="Cash (Assets)" value={peso.format(bankAssets)} note="Total in bank accounts" icon="▣" tone="positive" />
-        <SummaryMetric label="Credit Used" value={peso.format(creditUsed)} note="Total credit used" icon="▤" tone="danger" />
-        <SummaryMetric label="Available Credit" value={peso.format(availableCredit)} note="Total available credit" icon="◔" tone="blue" />
-        <SummaryMetric label="Upcoming Due" value={peso.format(upcomingDue)} note="Due in next 30 days" icon="▦" tone="warning" />
+        <SummaryBlock
+          title="Cash (Assets)"
+          value={money(totalAssets, hideBalances)}
+          note="Total in bank accounts"
+          tone="positive"
+          icon="▣"
+        />
+        <SummaryBlock
+          title="Credit Used"
+          value={money(totalCreditUsed, hideBalances)}
+          note="Total credit used"
+          tone="negative"
+          icon="▤"
+        />
+        <SummaryBlock
+          title="Available Credit"
+          value={money(totalAvailableCredit, hideBalances)}
+          note="Total available credit"
+          tone="blue"
+          icon="◔"
+        />
+        <SummaryBlock
+          title="Upcoming Due"
+          value={money(upcomingDue, hideBalances)}
+          note="Due in next 30 days"
+          tone="warning"
+          icon="▦"
+        />
 
-        <div className="segmented-control" aria-label="Account filters">
-          {(["all", "bank", "credit"] as const).map((filter) => (
+        <div className="ac-view-filter">
+          {(["all", "bank", "credit"] as DashboardFilter[]).map((value) => (
             <button
+              key={value}
               type="button"
-              key={filter}
-              className={accountFilter === filter ? "active" : ""}
-              onClick={() => setAccountFilter(filter)}
+              className={filter === value ? "active" : ""}
+              onClick={() => setFilter(value)}
             >
-              {filter === "all" ? "All" : filter === "bank" ? "Bank Accounts" : "Credit Cards"}
+              {value === "all"
+                ? "All"
+                : value === "bank"
+                  ? "Bank Accounts"
+                  : "Credit Cards"}
             </button>
           ))}
         </div>
-      </section>
+      </div>
 
-      <section className="dashboard-grid">
-        <div className="dashboard-left">
-          <section className="panel cards-panel">
-            <div className="panel-header">
-              <div>
-                <small>Wallet</small>
-                <h2>My Cards &amp; Accounts</h2>
-              </div>
-              <button type="button" onClick={onAddAccount}>＋ Add credit card</button>
+      <div className="ac-main-grid">
+        <section className="ac-wallet-panel">
+          <div className="ac-section-title">
+            <div>
+              <small>Wallet</small>
+              <h3>My Cards &amp; Accounts</h3>
             </div>
 
-            <div className="carousel-shell">
-              <button
-                type="button"
-                className="carousel-arrow left"
-                onClick={() => document.querySelector(".account-carousel")?.scrollBy({ left: -240, behavior: "smooth" })}
-                aria-label="Previous accounts"
-              >
-                ‹
-              </button>
-
-              <div className="account-carousel">
-                {filteredAccounts.map((account) => (
-                  <button
-                    type="button"
-                    key={account.id}
-                    className={`account-tile ${account.id === selected.id ? "selected" : ""}`}
-                    style={{ "--card-color": account.color } as React.CSSProperties}
-                    onClick={() => setSelectedId(account.id)}
-                  >
-                    <div className="account-tile-top">
-                      <span className="issuer-logo">{account.logoText ?? account.issuer.slice(0, 3)}</span>
-                      <span className={`status-badge ${account.status}`}>{statusLabel(account.status)}</span>
-                    </div>
-                    <strong>{account.name}</strong>
-                    <span>{account.maskedNumber}</span>
-                    <b>{peso.format(account.balance)}</b>
-                  </button>
-                ))}
-              </div>
-
-              <button
-                type="button"
-                className="carousel-arrow right"
-                onClick={() => document.querySelector(".account-carousel")?.scrollBy({ left: 240, behavior: "smooth" })}
-                aria-label="Next accounts"
-              >
-                ›
-              </button>
-            </div>
-
-            {selected.kind === "credit" ? (
-              <CreditDetails
-                account={selected}
-                utilization={utilization}
-                onPay={() => onPayCard?.(selected)}
-                onAddTransaction={() => onAddTransaction?.(selected)}
-                onTransfer={onTransfer}
-              />
-            ) : (
-              <BankDetails
-                account={selected}
-                onAddTransaction={() => onAddTransaction?.(selected)}
-                onTransfer={onTransfer}
-              />
-            )}
-          </section>
-        </div>
-
-        <aside className="dashboard-right">
-          <section className="panel statement-panel">
-            <div className="panel-header compact">
-              <h2>Statement Overview</h2>
-              <span className={`due-badge ${dueStatus.toLowerCase().replace(" ", "-")}`}>{dueStatus}</span>
-            </div>
-
-            {selected.kind === "credit" ? (
-              <div className="statement-grid">
-                <InfoCell label="Current Balance" value={peso.format(selected.balance)} />
-                <InfoCell label="Payment Due" value={peso.format(selected.statementBalance ?? selected.balance)} />
-                <InfoCell label="Last Statement Balance" value={peso.format(selected.statementBalance ?? 0)} />
-                <InfoCell label="Minimum Due" value={peso.format(selected.minimumDue ?? 0)} />
-                <div className="days-due">
-                  <div className="due-ring" style={{ "--progress": `${Math.max(0, Math.min(100, (daysToDue / 30) * 100))}%` } as React.CSSProperties}>
-                    <strong>{Math.max(daysToDue, 0)}</strong>
-                  </div>
-                  <span>days to due</span>
-                  <small>{dueDate ? dateFmt.format(dueDate) : "No due date"}</small>
-                </div>
-              </div>
-            ) : (
-              <div className="statement-grid bank-summary">
-                <InfoCell label="Current Balance" value={peso.format(selected.balance)} />
-                <InfoCell label="Available Balance" value={peso.format(selected.availableBalance ?? selected.balance)} />
-                <InfoCell label="Account Type" value={selected.accountType ?? "Bank Account"} />
-                <InfoCell label="Last Transaction" value={selected.lastTransactionDate ? dateFmt.format(safeDate(selected.lastTransactionDate)!) : "—"} />
-              </div>
-            )}
-          </section>
-
-          <div className="right-middle-grid">
-            <section className="panel spending-panel">
-              <div className="panel-header compact">
-                <h2>Spending by Category</h2>
-                <small>This cycle</small>
-              </div>
-
-              <div className="spending-layout">
-                <div className="donut-chart" style={{ background: donut }}>
-                  <div>
-                    <strong>{peso.format(totalSpending)}</strong>
-                    <small>Total spent</small>
-                  </div>
-                </div>
-
-                <div className="category-list">
-                  {categories.length ? categories.map((item) => (
-                    <div key={item.name} title={`${item.name}: ${peso.format(item.amount)} (${item.percent.toFixed(1)}%)`}>
-                      <i style={{ background: item.color }} />
-                      <span>{item.name}</span>
-                      <strong>{peso.format(item.amount)}</strong>
-                      <em>{item.percent.toFixed(1)}%</em>
-                    </div>
-                  )) : <p className="empty-copy">No posted spending for this account.</p>}
-                </div>
-              </div>
-            </section>
-
-            <section className="panel timeline-panel">
-              <div className="panel-header compact">
-                <h2>Payment Due Timeline</h2>
-                <button type="button">View all</button>
-              </div>
-
-              {selected.kind === "credit" ? (
-                <>
-                  <div className="timeline">
-                    <TimelineItem label="Statement Date" date={selected.statementDate} state="done" />
-                    <TimelineItem label="Payment Processing" date={selected.processingDate} state="current" />
-                    <TimelineItem label="Payment Due Date" date={selected.paymentDueDate} state={daysToDue < 0 ? "overdue" : "upcoming"} />
-                    {selected.paidDate && <TimelineItem label="Payment Completed" date={selected.paidDate} state="done" />}
-                  </div>
-                  <div className="amount-due">▦ <strong>{peso.format(selected.statementBalance ?? selected.balance)}</strong> due</div>
-                </>
-              ) : (
-                <div className="bank-health-copy">
-                  <strong>Bank account activity</strong>
-                  <p>Use this area for scheduled transfers, savings milestones, and recent cash-flow events.</p>
-                </div>
-              )}
-            </section>
+            <button
+              type="button"
+              onClick={
+                selectedItem.kind === "bank"
+                  ? onAddBankAccount
+                  : onAddCreditCard
+              }
+            >
+              ＋ Add {selectedItem.kind === "bank" ? "bank account" : "credit card"}
+            </button>
           </div>
 
-          <section className="panel health-panel">
-            <div className="panel-header compact">
-              <h2>{selected.kind === "credit" ? "Account Health" : "Account Insights"}</h2>
-              <button type="button">View details</button>
-            </div>
+          <div className="ac-carousel-wrap">
+            <button
+              className="ac-carousel-arrow previous"
+              type="button"
+              onClick={() => scrollCarousel(-1)}
+              aria-label="Previous"
+            >
+              ‹
+            </button>
 
-            {selected.kind === "credit" ? (
-              <div className="health-grid">
-                <HealthItem icon="◔" label="Credit Utilization" value={utilization < 30 ? "Low" : utilization < 60 ? "Moderate" : "High"} note={`${utilization.toFixed(0)}%`} />
-                <HealthItem icon="♢" label="Payment History" value="Excellent" note="On-time payments" />
-                <HealthItem icon="◴" label="Credit Age" value="Good" note="2 years" />
-                <HealthItem icon="▥" label="Credit Mix" value="Good" note="Well balanced" />
-              </div>
-            ) : (
-              <div className="health-grid">
-                <HealthItem icon="⌁" label="Balance Trend" value="Stable" note="Current cycle" />
-                <HealthItem icon="◎" label="Savings Progress" value="On track" note="Monthly goal" />
-                <HealthItem icon="↘" label="Monthly Inflow" value={peso.format(selected.balance)} note="This month" />
-                <HealthItem icon="↗" label="Monthly Outflow" value={peso.format(totalSpending)} note="This month" />
-              </div>
-            )}
-          </section>
-        </aside>
-      </section>
-
-      <section className="panel history-panel">
-        <div className="history-header">
-          <h2>Transaction History</h2>
-          <div className="history-actions">
-            <div className="history-filters">
-              {(["all", "purchase", "payment", "refund", "installment", "fee", "interest", "adjustment"] as const).map((filter) => (
+            <div className="ac-card-carousel" ref={carouselRef}>
+              {visibleItems.map((item) => (
                 <button
                   type="button"
-                  key={filter}
-                  className={transactionFilter === filter ? "active" : ""}
-                  onClick={() => setTransactionFilter(filter)}
+                  key={item.key}
+                  className={`ac-mini-card ${item.kind} ${
+                    item.key === selectedItem.key ? "selected" : ""
+                  }`}
+                  style={{ "--ac-card-color": item.color } as CSSProperties}
+                  onClick={() => selectItem(item)}
                 >
-                  {filter === "all" ? "All" : statusLabel(filter)}
+                  <div>
+                    <i>{item.issuer.slice(0, 4).toUpperCase()}</i>
+                    <em>{item.kind === "bank" ? "Active" : "Upcoming"}</em>
+                  </div>
+                  <b>{item.name}</b>
+                  <span>{item.maskedNumber}</span>
+                  <strong>{money(item.balance, hideBalances)}</strong>
                 </button>
               ))}
             </div>
-            <button type="button" className="export-button" aria-label="Export transactions">⇩</button>
+
+            <button
+              className="ac-carousel-arrow next"
+              type="button"
+              onClick={() => scrollCarousel(1)}
+              aria-label="Next"
+            >
+              ›
+            </button>
+          </div>
+
+          {selectedItem.kind === "credit" && selectedCardComputed ? (
+            <div className="ac-selected-detail">
+              <div
+                className="ac-large-credit-card"
+                style={
+                  {
+                    "--ac-card-color": selectedItem.color,
+                  } as CSSProperties
+                }
+              >
+                <div>
+                  <i>{selectedItem.issuer.slice(0, 4).toUpperCase()}</i>
+                  <span>
+                    <strong>{selectedItem.issuer}</strong>
+                    <small>{selectedItem.name}</small>
+                  </span>
+                </div>
+                <em>{selectedItem.maskedNumber}</em>
+                <strong>{money(selectedItem.balance, hideBalances)}</strong>
+                <b>
+                  {/mastercard/i.test(selectedItem.name)
+                    ? "MASTERCARD"
+                    : /amex|american express/i.test(selectedItem.name)
+                      ? "AMEX"
+                      : "VISA"}
+                </b>
+              </div>
+
+              <div className="ac-detail-content">
+                <div className="ac-credit-limit-strip">
+                  <Metric
+                    title="Total Credit Limit"
+                    value={money(selectedItem.card.creditLimit, hideBalances)}
+                  />
+                  <Metric
+                    title="Available Credit"
+                    value={money(
+                      selectedCardComputed.availableCredit,
+                      hideBalances,
+                    )}
+                  />
+                  <div className="ac-gauge">
+                    <span
+                      style={
+                        {
+                          "--value": Math.min(
+                            Math.max(selectedUtilization, 0),
+                            100,
+                          ),
+                        } as CSSProperties
+                      }
+                    >
+                      <strong>{selectedUtilization.toFixed(0)}%</strong>
+                    </span>
+                    <small>Used</small>
+                  </div>
+                </div>
+
+                <div className="ac-detail-summary compact">
+                  <Metric title="Card Type" value="Credit Card" />
+                  <Metric
+                    title="Statement Date"
+                    value={formatDate(
+                      selectedCardStatement?.statementDate ??
+                        selectedCardComputed.nextStatementDate,
+                    )}
+                  />
+                  <Metric
+                    title="Payment Due Date"
+                    value={formatDate(selectedDueDate)}
+                  />
+                  <Metric
+                    title="Minimum Due"
+                    value={money(
+                      selectedCardStatement?.minimumDue ?? 0,
+                      hideBalances,
+                    )}
+                  />
+                </div>
+
+                <div className="ac-detail-actions">
+                  <button className="primary" type="button" onClick={onPayCard}>
+                    ◎ Pay Card
+                  </button>
+                  <button type="button" onClick={onAddCardTransaction}>
+                    ＋ Add Transaction
+                  </button>
+                  <button type="button" onClick={onTransfer}>
+                    ⇄ Transfer
+                  </button>
+                  <button type="button" onClick={onEditCard}>
+                    ••• More
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="ac-selected-detail">
+              <div
+                className="ac-large-bank-card"
+                style={
+                  {
+                    "--ac-card-color": selectedItem.color,
+                  } as CSSProperties
+                }
+              >
+                <div>
+                  <i>{selectedItem.issuer.slice(0, 4).toUpperCase()}</i>
+                  <span>
+                    <strong>{selectedItem.issuer}</strong>
+                    <small>{selectedItem.name}</small>
+                  </span>
+                </div>
+                <em>{selectedItem.maskedNumber}</em>
+                <strong>{money(selectedItem.balance, hideBalances)}</strong>
+                <b>{selectedItem.account.type || "BANK"}</b>
+              </div>
+
+              <div className="ac-detail-content">
+                <div className="ac-detail-summary">
+                  <Metric
+                    title="Available Balance"
+                    value={money(selectedItem.balance, hideBalances)}
+                  />
+                  <Metric
+                    title="Current Balance"
+                    value={money(selectedItem.balance, hideBalances)}
+                  />
+                  <Metric
+                    title="Account Type"
+                    value={selectedItem.account.type || "Bank Account"}
+                  />
+                  <Metric
+                    title="Bank"
+                    value={selectedItem.account.bank || selectedItem.name}
+                  />
+                </div>
+
+                <div className="ac-detail-summary compact">
+                  <Metric
+                    title="Account Number"
+                    value={selectedItem.maskedNumber}
+                  />
+                  <Metric
+                    title="Last Transaction"
+                    value={formatDate(selectedTransactions[0]?.date)}
+                  />
+                  <Metric title="Interest Rate" value="—" />
+                  <Metric title="Status" value="Active" />
+                </div>
+
+                <div className="ac-detail-actions">
+                  <button
+                    className="primary"
+                    type="button"
+                    onClick={onAddAccountTransaction}
+                  >
+                    ＋ Deposit
+                  </button>
+                  <button type="button" onClick={onTransfer}>
+                    ⇄ Transfer
+                  </button>
+                  <button type="button" onClick={onViewAccountStatement}>
+                    ▤ Statement
+                  </button>
+                  <button type="button" onClick={onEditAccount}>
+                    ••• More
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+
+        <aside className="ac-insights-panel">
+          <section className="ac-insight-card statement">
+            <div className="ac-insight-title">
+              <h3>Statement Overview</h3>
+              {selectedItem.kind === "credit" && (
+                <button type="button" onClick={onViewCardStatement}>
+                  View Statement
+                </button>
+              )}
+            </div>
+
+            {selectedItem.kind === "credit" && selectedCardComputed ? (
+              <div className="ac-statement-grid">
+                <Metric
+                  title="Current Balance"
+                  value={money(
+                    selectedCardComputed.currentBalance,
+                    hideBalances,
+                  )}
+                />
+                <Metric
+                  title="Payment Due"
+                  value={money(
+                    selectedCardStatement?.remainingDue ??
+                      selectedCardComputed.plannedPayment,
+                    hideBalances,
+                  )}
+                />
+                <Metric
+                  title="Last Statement Balance"
+                  value={money(
+                    selectedCardStatement?.statementBalance ?? 0,
+                    hideBalances,
+                  )}
+                />
+                <Metric
+                  title="Minimum Due"
+                  value={money(
+                    selectedCardStatement?.minimumDue ?? 0,
+                    hideBalances,
+                  )}
+                />
+                <div className="ac-days-due">
+                  <span>
+                    <b>{Math.max(selectedDaysToDue, 0)}</b>
+                    <em>days</em>
+                  </span>
+                  <small>to due</small>
+                  <strong>{formatDate(selectedDueDate)}</strong>
+                </div>
+              </div>
+            ) : (
+              <div className="ac-bank-kpis">
+                <SummaryBlock
+                  title="Current Balance"
+                  value={money(selectedItem.balance, hideBalances)}
+                  note="Available today"
+                  tone="positive"
+                  icon="▣"
+                />
+                <SummaryBlock
+                  title="Recent Activity"
+                  value={`${selectedTransactions.length} transactions`}
+                  note="Selected account"
+                  tone="blue"
+                  icon="◴"
+                />
+              </div>
+            )}
+          </section>
+
+          <section className="ac-insight-card spending">
+            <div className="ac-insight-title">
+              <h3>Spending by Category</h3>
+              <small>This cycle</small>
+            </div>
+            <div className="ac-spending-body">
+              <div className="ac-donut" style={{ background: donutBackground }}>
+                <span>
+                  <strong>{money(categoryTotal, hideBalances)}</strong>
+                  <small>Total spent</small>
+                </span>
+              </div>
+
+              <div className="ac-spending-list">
+                {categories.length ? (
+                  categories.map((category) => (
+                    <div key={category.name}>
+                      <i style={{ background: category.color }} />
+                      <span>{category.name}</span>
+                      <strong>{money(category.amount, hideBalances)}</strong>
+                      <em>{category.percentage.toFixed(1)}%</em>
+                    </div>
+                  ))
+                ) : (
+                  <div className="ac-empty">No spending for this cycle.</div>
+                )}
+              </div>
+            </div>
+          </section>
+
+          <section className="ac-insight-card timeline">
+            <div className="ac-insight-title">
+              <h3>Payment Due Timeline</h3>
+              <button
+                type="button"
+                onClick={
+                  selectedItem.kind === "credit"
+                    ? onViewCardStatement
+                    : onViewAccountStatement
+                }
+              >
+                View All
+              </button>
+            </div>
+
+            {selectedItem.kind === "credit" && selectedCardComputed ? (
+              <>
+                <div className="ac-timeline">
+                  <TimelineRow
+                    date={
+                      selectedCardStatement?.statementDate ??
+                      selectedCardComputed.nextStatementDate
+                    }
+                    label="Statement Date"
+                    state="done"
+                  />
+                  <TimelineRow
+                    date={selectedDueDate}
+                    label="Payment Processing"
+                    state="current"
+                  />
+                  <TimelineRow
+                    date={selectedDueDate}
+                    label="Payment Due Date"
+                    state={selectedDaysToDue < 0 ? "overdue" : "upcoming"}
+                  />
+                </div>
+                <div className="ac-due-alert">
+                  ▦
+                  <strong>
+                    {money(
+                      selectedCardStatement?.remainingDue ??
+                        selectedCardComputed.plannedPayment,
+                      hideBalances,
+                    )}
+                  </strong>
+                  <span>amount due</span>
+                </div>
+              </>
+            ) : (
+              <div className="ac-timeline">
+                {selectedTransactions.slice(0, 3).map((transaction) => (
+                  <TimelineRow
+                    key={transaction.id}
+                    date={transaction.date}
+                    label={transaction.description}
+                    state="done"
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="ac-insight-card health">
+            <div className="ac-insight-title">
+              <h3>
+                {selectedItem.kind === "credit"
+                  ? "Account Health"
+                  : "Account Insights"}
+              </h3>
+              <button
+                type="button"
+                onClick={
+                  selectedItem.kind === "credit"
+                    ? onViewCardStatement
+                    : onViewAccountStatement
+                }
+              >
+                View Details
+              </button>
+            </div>
+
+            <div className="ac-health-grid">
+              {selectedItem.kind === "credit" ? (
+                <>
+                  <Health
+                    icon="◔"
+                    title="Credit Utilization"
+                    value={
+                      selectedUtilization < 30
+                        ? "Low"
+                        : selectedUtilization < 60
+                          ? "Moderate"
+                          : "High"
+                    }
+                    note={`${selectedUtilization.toFixed(0)}%`}
+                  />
+                  <Health
+                    icon="♢"
+                    title="Payment History"
+                    value="Excellent"
+                    note="On-time payments"
+                  />
+                  <Health
+                    icon="◴"
+                    title="Credit Age"
+                    value="Good"
+                    note="Account age"
+                  />
+                  <Health
+                    icon="▥"
+                    title="Credit Mix"
+                    value="Good"
+                    note="Well balanced"
+                  />
+                </>
+              ) : (
+                <>
+                  <Health
+                    icon="⌁"
+                    title="Balance Trend"
+                    value="Stable"
+                    note="Current period"
+                  />
+                  <Health
+                    icon="◎"
+                    title="Savings Progress"
+                    value="On Track"
+                    note="Monthly goal"
+                  />
+                  <Health
+                    icon="↘"
+                    title="Monthly Inflow"
+                    value={money(
+                      selectedTransactions
+                        .filter((item) => item.raw.type === "Income")
+                        .reduce((sum, item) => sum + item.amount, 0),
+                      hideBalances,
+                    )}
+                    note="This month"
+                  />
+                  <Health
+                    icon="↗"
+                    title="Monthly Outflow"
+                    value={money(categoryTotal, hideBalances)}
+                    note="This month"
+                  />
+                </>
+              )}
+            </div>
+          </section>
+        </aside>
+      </div>
+
+      <section className="ac-history">
+        <div className="ac-history-title">
+          <h3>Transaction History</h3>
+          <div className="ac-history-filters">
+            {(
+              [
+                "all",
+                "purchase",
+                "payment",
+                "refund",
+                "installment",
+                "fee",
+                "interest",
+                "adjustment",
+              ] as TransactionFilter[]
+            ).map((value) => (
+              <button
+                key={value}
+                type="button"
+                className={transactionFilter === value ? "active" : ""}
+                onClick={() => setTransactionFilter(value)}
+              >
+                {value === "all" ? "All" : transactionTypeLabel(value)}
+              </button>
+            ))}
           </div>
         </div>
 
-        <div className="cycle-summary">
+        <div className="ac-cycle-summary">
           <div>
             <strong>Current Billing Cycle</strong>
-            <span>{cycleStart && cycleEnd ? `${dateFmt.format(cycleStart)} – ${dateFmt.format(cycleEnd)}` : "Current account cycle"}</span>
-            <small>{cycleEnd ? `Cutoff ${dateFmt.format(cycleEnd)}` : "No cutoff date"}</small>
+            <span>
+              {cycleStart && cycleEnd
+                ? `${formatDate(cycleStart)} – ${formatDate(cycleEnd)}`
+                : "Selected account activity"}
+            </span>
+            <small>{cycleEnd ? `Cutoff ${formatDate(cycleEnd)}` : "No cutoff"}</small>
           </div>
-          <div><small>Transactions</small><strong>{selectedTransactions.length}</strong></div>
-          <div><small>Cycle Total</small><strong>{peso.format(cycleTotal)}</strong></div>
+          <div>
+            <small>Transactions</small>
+            <strong>{selectedTransactions.length}</strong>
+          </div>
+          <div>
+            <small>Cycle Total</small>
+            <strong>{money(cycleTotal, hideBalances)}</strong>
+          </div>
         </div>
 
-        <div className="transaction-scroll">
-          <div className="transaction-grid transaction-head">
-            <span>Date</span><span>Description</span><span>Type</span><span>Category</span>
-            <span>Account or Card</span><span>Amount</span><span>Status</span><span>Actions</span>
+        <div className="ac-history-table-wrap">
+          <div className="ac-history-head credit">
+            <span>Date</span>
+            <span>Description</span>
+            <span>Type</span>
+            <span>Category</span>
+            <span>Account or Card</span>
+            <span>Amount</span>
+            <span>Status</span>
+            <span>Actions</span>
           </div>
 
-          {visibleTransactions.map((transaction) => (
-            <button
-              type="button"
-              className="transaction-grid transaction-row"
-              key={transaction.id}
-              onClick={() => onViewTransaction?.(transaction)}
-            >
-              <span>{dateFmt.format(safeDate(transaction.date)!)}</span>
-              <span className="description-cell">
-                <i>{transaction.type === "purchase" ? "🛍" : transaction.type === "payment" ? "↙" : "◆"}</i>
-                <span>
-                  <strong>{transaction.description}</strong>
-                  {transaction.installment && (
-                    <small>
-                      Installment {transaction.installment.current} of {transaction.installment.total} · Remaining {peso.format(transaction.installment.remainingBalance)}
-                    </small>
-                  )}
-                </span>
+          {filteredTransactions.map((transaction) => (
+            <div className="ac-history-row credit" key={transaction.id}>
+              <span>{formatDate(transaction.date)}</span>
+              <span>
+                <i>{transaction.type === "purchase" ? "🛍" : "◆"}</i>
+                <strong>{transaction.description}</strong>
               </span>
-              <span><em className={`type-badge ${transaction.type}`}>{statusLabel(transaction.type)}</em></span>
+              <em>{transactionTypeLabel(transaction.type)}</em>
               <span>{transaction.category}</span>
-              <span>{selected.name} {selected.maskedNumber}</span>
-              <span className={["refund", "payment"].includes(transaction.type) ? "positive-amount" : "negative-amount"}>
-                {["refund", "payment"].includes(transaction.type) ? "+" : "−"}{peso.format(Math.abs(transaction.amount))}
+              <span>
+                {selectedItem.name} {selectedItem.maskedNumber}
               </span>
-              <span><em className={`status-dot ${transaction.status}`}>● {statusLabel(transaction.status)}</em></span>
-              <span className="row-menu">⋮</span>
-            </button>
+              <strong
+                className={
+                  ["payment", "refund"].includes(transaction.type)
+                    ? "positive"
+                    : ""
+                }
+              >
+                {["payment", "refund"].includes(transaction.type) ? "+" : "−"}
+                {money(Math.abs(transaction.amount), hideBalances)}
+              </strong>
+              <span className="positive">
+                ● {transactionTypeLabel(transaction.status)}
+              </span>
+              <button
+                type="button"
+                className="ac-row-action"
+                aria-label="Transaction actions"
+              >
+                ⋮
+              </button>
+            </div>
           ))}
 
-          {!visibleTransactions.length && <div className="empty-row">No transactions match this filter.</div>}
+          {!filteredTransactions.length && (
+            <div className="ac-empty">No transactions match this filter.</div>
+          )}
         </div>
       </section>
-    </main>
+    </section>
   );
 }
 
-function SummaryMetric({
-  label,
+function SummaryBlock({
+  title,
   value,
   note,
+  tone,
   icon,
-  tone = "default",
   chart = false,
 }: {
-  label: string;
+  title: string;
   value: string;
   note: string;
+  tone: "positive" | "negative" | "blue" | "warning";
   icon?: string;
-  tone?: "default" | "positive" | "danger" | "blue" | "warning";
   chart?: boolean;
 }) {
   return (
-    <div className={`summary-metric ${tone}`}>
-      <div className="metric-copy">
-        <small>{label}</small>
+    <div className={`ac-summary-metric ${tone}`}>
+      <span>
+        <small>{title}</small>
         <strong>{value}</strong>
-        <span>{note}</span>
-      </div>
+        <em>{note}</em>
+      </span>
       {chart ? (
-        <svg className="sparkline" viewBox="0 0 120 42" aria-hidden="true">
-          <polyline points="2,34 18,27 30,31 44,19 58,24 72,14 86,18 102,7 118,11" />
+        <svg className="ac-summary-sparkline" viewBox="0 0 120 42">
+          <polyline points="2,34 18,26 31,30 45,18 58,23 72,13 87,17 102,7 118,11" />
         </svg>
       ) : (
         <i>{icon}</i>
@@ -666,148 +1044,63 @@ function SummaryMetric({
   );
 }
 
-function InfoCell({ label, value }: { label: string; value: string }) {
-  return <div className="info-cell"><small>{label}</small><strong>{value}</strong></div>;
-}
-
-function CreditDetails({
-  account,
-  utilization,
-  onPay,
-  onAddTransaction,
-  onTransfer,
-}: {
-  account: FinanceAccount;
-  utilization: number;
-  onPay: () => void;
-  onAddTransaction: () => void;
-  onTransfer?: () => void;
-}) {
+function Metric({ title, value }: { title: string; value: string }) {
   return (
-    <div className="selected-detail">
-      <div className="large-card" style={{ "--card-color": account.color } as React.CSSProperties}>
-        <div className="large-card-brand">
-          <span className="issuer-logo large">{account.logoText ?? account.issuer}</span>
-          <strong>{account.issuer}</strong>
-        </div>
-        <h3>{account.name}</h3>
-        <span>{account.maskedNumber}</span>
-        <b>{peso.format(account.balance)}</b>
-        <em>{account.network ?? "CREDIT"}</em>
-      </div>
-
-      <div className="detail-content">
-        <div className="limit-row">
-          <InfoCell label="Total Credit Limit" value={peso.format(account.creditLimit ?? 0)} />
-          <InfoCell label="Available Credit" value={peso.format(Math.max((account.creditLimit ?? 0) - account.balance, 0))} />
-          <div className="utilization">
-            <div className="utilization-ring" style={{ "--value": `${utilization}%` } as React.CSSProperties}>
-              <strong>{utilization.toFixed(0)}%</strong>
-            </div>
-            <small>Used</small>
-          </div>
-        </div>
-
-        <div className="detail-row">
-          <InfoCell label="Card Type" value="Credit Card" />
-          <InfoCell label="Credit Limit" value={peso.format(account.creditLimit ?? 0)} />
-          <InfoCell label="Statement Date" value={account.statementDate ? dateFmt.format(safeDate(account.statementDate)!) : "—"} />
-          <InfoCell label="Payment Due Date" value={account.paymentDueDate ? dateFmt.format(safeDate(account.paymentDueDate)!) : "—"} />
-        </div>
-
-        <div className="detail-actions">
-          <button type="button" className="primary" onClick={onPay}>◎ Pay Card</button>
-          <button type="button" onClick={onAddTransaction}>＋ Add Transaction</button>
-          <button type="button" onClick={onTransfer}>⇄ Transfer</button>
-          <button type="button">••• More</button>
-        </div>
-      </div>
+    <div className="ac-metric">
+      <small>{title}</small>
+      <strong>{value}</strong>
     </div>
   );
 }
 
-function BankDetails({
-  account,
-  onAddTransaction,
-  onTransfer,
-}: {
-  account: FinanceAccount;
-  onAddTransaction: () => void;
-  onTransfer?: () => void;
-}) {
-  return (
-    <div className="selected-detail">
-      <div className="large-card bank" style={{ "--card-color": account.color } as React.CSSProperties}>
-        <div className="large-card-brand">
-          <span className="issuer-logo large">{account.logoText ?? account.issuer}</span>
-          <strong>{account.issuer}</strong>
-        </div>
-        <h3>{account.name}</h3>
-        <span>{account.maskedNumber}</span>
-        <b>{peso.format(account.balance)}</b>
-        <em>{account.accountType ?? "BANK"}</em>
-      </div>
-
-      <div className="detail-content">
-        <div className="limit-row bank">
-          <InfoCell label="Available Balance" value={peso.format(account.availableBalance ?? account.balance)} />
-          <InfoCell label="Current Balance" value={peso.format(account.balance)} />
-          <InfoCell label="Interest Rate" value={account.interestRate != null ? `${account.interestRate}%` : "—"} />
-        </div>
-
-        <div className="detail-row">
-          <InfoCell label="Account Type" value={account.accountType ?? "Bank Account"} />
-          <InfoCell label="Account Number" value={account.maskedNumber} />
-          <InfoCell label="Bank Name" value={account.issuer} />
-          <InfoCell label="Last Transaction" value={account.lastTransactionDate ? dateFmt.format(safeDate(account.lastTransactionDate)!) : "—"} />
-        </div>
-
-        <div className="detail-actions bank-actions">
-          <button type="button" className="primary" onClick={onAddTransaction}>＋ Deposit</button>
-          <button type="button" onClick={onTransfer}>⇄ Transfer</button>
-          <button type="button">••• More</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TimelineItem({
-  label,
+function TimelineRow({
   date,
+  label,
   state,
 }: {
-  label: string;
   date?: string;
+  label: string;
   state: "done" | "current" | "upcoming" | "overdue";
 }) {
   return (
-    <div className={`timeline-item ${state}`}>
+    <div className={state}>
       <i />
       <span>
-        <strong>{date ? dateFmt.format(safeDate(date)!) : "Not scheduled"}</strong>
+        <strong>{formatDate(date)}</strong>
         <small>{label}</small>
       </span>
-      <b>{state === "done" ? "✓" : state === "current" ? "◷" : state === "overdue" ? "!" : "○"}</b>
+      <b>
+        {state === "done"
+          ? "✓"
+          : state === "current"
+            ? "◷"
+            : state === "overdue"
+              ? "!"
+              : "○"}
+      </b>
     </div>
   );
 }
 
-function HealthItem({
+function Health({
   icon,
-  label,
+  title,
   value,
   note,
 }: {
   icon: string;
-  label: string;
+  title: string;
   value: string;
   note: string;
 }) {
   return (
-    <div className="health-item">
+    <div className="ac-health-item">
       <i>{icon}</i>
-      <span><small>{label}</small><strong>{value}</strong><em>{note}</em></span>
+      <span>
+        <small>{title}</small>
+        <b>{value}</b>
+        <em>{note}</em>
+      </span>
     </div>
   );
 }
