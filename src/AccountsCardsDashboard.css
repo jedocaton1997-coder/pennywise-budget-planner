@@ -1,129 +1,93 @@
 /* =========================================================
-   ACCOUNTS & CARDS — FINAL LAYOUT AND OVERFLOW FIX
-   Paste this entire block at the bottom of the existing CSS.
+   ACCOUNTS & CARDS — VISUAL DESIGN UPGRADE
+   Keeps the current structure and improves the styling.
+   Paste this at the bottom of the existing stylesheet.
    ========================================================= */
 
 .ac-dashboard {
-  --ac-gap: 12px;
-  --ac-radius: 12px;
-  --ac-border: #dce7e3;
-  --ac-surface: #ffffff;
-  --ac-muted: #718087;
-  --ac-green: #168a5b;
+  --ac-green: #159669;
+  --ac-green-dark: #0e7551;
+  --ac-green-soft: #eaf8f2;
 
-  display: grid !important;
-  grid-template-columns: minmax(0, 1fr) !important;
-  gap: var(--ac-gap) !important;
+  --ac-red: #ef5c55;
+  --ac-red-dark: #cf3f3a;
+  --ac-red-soft: #fff0ee;
 
-  width: 100% !important;
-  max-width: none !important;
-  margin: 0 !important;
-  padding: 0 !important;
+  --ac-blue: #4c84ec;
+  --ac-blue-soft: #eef4ff;
 
-  overflow: visible !important;
-}
+  --ac-orange: #f5a63c;
+  --ac-orange-soft: #fff5e6;
 
-.ac-dashboard,
-.ac-dashboard *,
-.ac-dashboard *::before,
-.ac-dashboard *::after {
-  box-sizing: border-box;
-}
+  --ac-purple: #9273d8;
+  --ac-purple-soft: #f5f0ff;
 
-.ac-dashboard > *,
-.ac-main-grid > *,
-.ac-wallet-panel > *,
-.ac-insights-panel > *,
-.ac-selected-detail > *,
-.ac-detail-content > *,
-.ac-statement-grid > *,
-.ac-spending-body > *,
-.ac-health-grid > * {
-  min-width: 0;
+  --ac-cyan: #31bfd0;
+  --ac-cyan-soft: #eafcff;
+
+  --ac-ink: #122a34;
+  --ac-muted: #71838b;
+  --ac-line: #dce8e3;
+  --ac-surface: rgba(255, 255, 255, 0.97);
+
+  --ac-radius: 16px;
+  --ac-radius-small: 11px;
+
+  --ac-shadow:
+    0 3px 8px rgba(24, 65, 52, 0.035),
+    0 15px 34px rgba(24, 65, 52, 0.065);
+
+  color: var(--ac-ink) !important;
 }
 
 /* ---------------------------------------------------------
-   FLATTEN THE OLD TWO-COLUMN WRAPPER
-
-   This allows Wallet, Statement, Spending, Timeline and
-   Account Health to be positioned directly in the dashboard.
+   PAGE BACKGROUND
    --------------------------------------------------------- */
 
-.ac-main-grid {
-  display: contents !important;
-}
+.ac-dashboard::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
 
-.ac-insights-panel {
-  display: contents !important;
-}
-
-/* ---------------------------------------------------------
-   FINAL DESKTOP ORDER
-
-   1. Summary strip
-   2. My Cards & Accounts carousel
-   3. Selected card
-   4. Statement Overview
-   5. Spending
-   6. Timeline
-   7. Account Health
-   8. Transaction History
-   --------------------------------------------------------- */
-
-.ac-summary-strip {
-  order: 1;
-}
-
-.ac-wallet-panel {
-  order: 2;
-}
-
-.ac-insight-card.statement {
-  order: 3;
-}
-
-.ac-insight-card.spending {
-  order: 4;
-}
-
-.ac-insight-card.timeline {
-  order: 5;
-}
-
-.ac-insight-card.health {
-  order: 6;
-}
-
-.ac-history {
-  order: 7;
+  background:
+    radial-gradient(
+      circle at 94% 3%,
+      rgba(83, 220, 203, 0.17),
+      transparent 27%
+    ),
+    radial-gradient(
+      circle at 3% 95%,
+      rgba(97, 206, 193, 0.14),
+      transparent 28%
+    ),
+    linear-gradient(
+      135deg,
+      #f7fbfc 0%,
+      #f0f8f7 48%,
+      #f4fbfa 100%
+    );
 }
 
 /* ---------------------------------------------------------
-   SHARED CONTAINERS
+   SHARED PANELS
    --------------------------------------------------------- */
 
 .ac-summary-strip,
 .ac-wallet-panel,
 .ac-insight-card,
 .ac-history {
-  width: 100% !important;
-  min-width: 0 !important;
-  height: auto !important;
-
-  border: 1px solid var(--ac-border) !important;
+  border: 1px solid rgba(197, 216, 208, 0.82) !important;
   border-radius: var(--ac-radius) !important;
-  background: var(--ac-surface) !important;
 
-  box-shadow:
-    0 2px 8px rgba(24, 65, 52, 0.035),
-    0 8px 24px rgba(24, 65, 52, 0.035) !important;
-}
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.99),
+      rgba(252, 255, 254, 0.96)
+    ) !important;
 
-/* Do not clip regular text content. */
-.ac-wallet-panel,
-.ac-insight-card,
-.ac-history {
-  overflow: visible !important;
+  box-shadow: var(--ac-shadow) !important;
 }
 
 /* ---------------------------------------------------------
@@ -131,797 +95,757 @@
    --------------------------------------------------------- */
 
 .ac-summary-strip {
-  display: grid !important;
-
-  grid-template-columns:
-    minmax(245px, 1.3fr)
-    repeat(4, minmax(175px, 1fr))
-    minmax(245px, auto) !important;
-
-  min-height: 96px !important;
   overflow: hidden !important;
 }
 
 .ac-summary-main,
 .ac-summary-metric {
-  display: flex !important;
-  align-items: center !important;
-
-  min-width: 0 !important;
-  min-height: 94px !important;
-
-  gap: 11px !important;
-  padding: 13px 16px !important;
-
-  border-right: 1px solid var(--ac-border) !important;
+  position: relative;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.99),
+      rgba(250, 253, 252, 0.96)
+    ) !important;
 }
 
-.ac-summary-main {
-  justify-content: space-between !important;
+.ac-summary-main::after,
+.ac-summary-metric::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 3px;
+  opacity: 0;
+  transition: opacity 160ms ease;
 }
 
-.ac-summary-main > div,
-.ac-summary-metric > span {
-  display: grid !important;
-  gap: 4px !important;
-
-  min-width: 0 !important;
-  max-width: 100% !important;
+.ac-summary-main:hover::after,
+.ac-summary-metric:hover::after {
+  opacity: 1;
 }
 
-.ac-summary-main small,
-.ac-summary-main strong,
-.ac-summary-main span,
-.ac-summary-main em,
-.ac-summary-metric small,
-.ac-summary-metric strong,
-.ac-summary-metric span,
-.ac-summary-metric em {
-  max-width: 100% !important;
+.ac-summary-main::after {
+  background: linear-gradient(90deg, var(--ac-green), #55c899);
+}
 
-  line-height: 1.2 !important;
-  overflow-wrap: anywhere !important;
-  word-break: normal !important;
+.ac-summary-metric:nth-child(2)::after {
+  background: linear-gradient(90deg, var(--ac-green), #55c899);
+}
+
+.ac-summary-metric:nth-child(3)::after {
+  background: linear-gradient(90deg, var(--ac-red), #ff928c);
+}
+
+.ac-summary-metric:nth-child(4)::after {
+  background: linear-gradient(90deg, var(--ac-blue), #86aef8);
+}
+
+.ac-summary-metric:nth-child(5)::after {
+  background: linear-gradient(90deg, var(--ac-orange), #ffcb75);
+}
+
+.ac-summary-main:hover,
+.ac-summary-metric:hover {
+  background: #ffffff !important;
 }
 
 .ac-summary-main strong {
-  font-size: clamp(1.25rem, 1.45vw, 1.65rem) !important;
-  white-space: nowrap !important;
+  color: var(--ac-green) !important;
 }
 
-.ac-summary-metric strong {
-  font-size: clamp(0.92rem, 1vw, 1.1rem) !important;
-  white-space: nowrap !important;
+.ac-summary-metric.negative strong,
+.ac-summary-metric:nth-child(3) strong {
+  color: var(--ac-red) !important;
 }
 
-.ac-summary-main small,
-.ac-summary-metric small,
-.ac-summary-metric em {
-  font-size: 0.68rem !important;
+.ac-summary-metric.blue strong,
+.ac-summary-metric:nth-child(4) strong {
+  color: var(--ac-blue) !important;
 }
 
-.ac-summary-main svg {
-  flex: 0 0 auto !important;
-  width: 92px !important;
-  max-width: 35% !important;
+.ac-summary-metric.warning strong,
+.ac-summary-metric:nth-child(5) strong {
+  color: var(--ac-ink) !important;
 }
 
 .ac-summary-metric > i {
-  display: grid !important;
-  place-items: center !important;
-
-  flex: 0 0 38px !important;
-
-  width: 38px !important;
-  height: 38px !important;
-
-  border-radius: 50% !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
 }
 
-.ac-summary-metric > i svg {
-  width: 17px !important;
-  height: 17px !important;
+.ac-summary-metric:nth-child(2) > i {
+  background: var(--ac-green-soft) !important;
+  color: var(--ac-green) !important;
 }
 
-/* Summary account-type filters */
+.ac-summary-metric:nth-child(3) > i {
+  background: var(--ac-red-soft) !important;
+  color: var(--ac-red) !important;
+}
+
+.ac-summary-metric:nth-child(4) > i {
+  background: var(--ac-blue-soft) !important;
+  color: var(--ac-blue) !important;
+}
+
+.ac-summary-metric:nth-child(5) > i {
+  background: var(--ac-orange-soft) !important;
+  color: var(--ac-orange) !important;
+}
+
+/* Account filter */
 
 .ac-view-filter {
-  display: flex !important;
-  align-self: center !important;
-  justify-self: center !important;
-
-  min-width: 0 !important;
-  max-width: calc(100% - 20px) !important;
-
-  margin: 10px !important;
-  padding: 3px !important;
-
-  border: 1px solid var(--ac-border) !important;
-  border-radius: 11px !important;
-  background: #f8fbfa !important;
+  border: 1px solid #d7e3df !important;
+  border-radius: 13px !important;
+  background: #f6faf8 !important;
+  box-shadow: inset 0 1px 2px rgba(24, 65, 52, 0.05) !important;
 }
 
 .ac-view-filter button {
-  min-width: 0 !important;
-  min-height: 34px !important;
+  color: #5f737b !important;
+  transition:
+    background 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease;
+}
 
-  padding: 0 11px !important;
+.ac-view-filter button:hover {
+  color: var(--ac-green-dark) !important;
+  background: rgba(22, 150, 105, 0.07) !important;
+}
 
-  border: 0 !important;
-  border-radius: 9px !important;
+.ac-view-filter button.active {
+  background:
+    linear-gradient(
+      135deg,
+      var(--ac-green),
+      var(--ac-green-dark)
+    ) !important;
 
-  font-size: 0.7rem !important;
-  white-space: nowrap !important;
+  color: #fff !important;
+
+  box-shadow:
+    0 5px 12px rgba(21, 150, 105, 0.25) !important;
 }
 
 /* ---------------------------------------------------------
-   MY CARDS & ACCOUNTS — FULL-WIDTH SECTION
+   SECTION TITLES
    --------------------------------------------------------- */
 
-.ac-wallet-panel {
-  display: grid !important;
-  grid-template-columns: minmax(0, 1fr) !important;
-
-  height: auto !important;
-  min-height: 0 !important;
-}
-
-.ac-section-title {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-
-  min-width: 0 !important;
-  min-height: 56px !important;
-
-  gap: 12px !important;
-  padding: 10px 16px 5px !important;
-
-  border-bottom: 0 !important;
-}
-
-.ac-section-title > div {
-  display: grid !important;
-  gap: 1px !important;
-
-  min-width: 0 !important;
+.ac-section-title,
+.ac-insight-title,
+.ac-history-title {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(247, 251, 249, 0.95),
+      rgba(255, 255, 255, 0.98)
+    ) !important;
 }
 
 .ac-section-title h3,
-.ac-section-title small {
-  max-width: 100% !important;
-  margin: 0 !important;
-
-  line-height: 1.25 !important;
-  overflow-wrap: anywhere !important;
+.ac-insight-title h3,
+.ac-history-title h3 {
+  color: var(--ac-ink) !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.02em !important;
 }
 
-.ac-section-title h3 {
-  font-size: 0.95rem !important;
+.ac-section-title small,
+.ac-insight-title small {
+  color: var(--ac-muted) !important;
 }
 
-.ac-section-title small {
-  font-size: 0.7rem !important;
-}
+/* Add card button */
 
 .ac-section-title > button {
-  flex: 0 0 auto !important;
+  border: 1px solid #d5e2dd !important;
+  background:
+    linear-gradient(
+      145deg,
+      #ffffff,
+      #f8fbfa
+    ) !important;
 
-  width: auto !important;
-  min-width: 154px !important;
-  min-height: 36px !important;
+  color: var(--ac-ink) !important;
 
-  padding: 7px 14px !important;
+  box-shadow:
+    0 3px 8px rgba(25, 55, 45, 0.05) !important;
 
-  border-radius: 10px !important;
+  transition:
+    transform 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
 
-  font-size: 0.78rem !important;
-  white-space: nowrap !important;
+.ac-section-title > button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(21, 150, 105, 0.38) !important;
+  box-shadow:
+    0 7px 16px rgba(25, 55, 45, 0.09) !important;
 }
 
 /* ---------------------------------------------------------
-   CAROUSEL
+   CAROUSEL CARDS
    --------------------------------------------------------- */
 
-.ac-carousel-wrap {
-  position: relative !important;
-
-  width: 100% !important;
-  min-width: 0 !important;
-
-  padding: 8px 29px 11px !important;
-  overflow: visible !important;
-}
-
-.ac-card-carousel {
-  display: flex !important;
-
-  width: 100% !important;
-  min-width: 0 !important;
-
-  gap: 10px !important;
-
-  overflow-x: auto !important;
-  overflow-y: hidden !important;
-
-  scroll-snap-type: x proximity !important;
-  scrollbar-width: none !important;
-}
-
-.ac-card-carousel::-webkit-scrollbar {
-  display: none !important;
-}
-
-.ac-carousel-arrow {
-  position: absolute !important;
-  top: 50% !important;
-  z-index: 10 !important;
-
-  display: grid !important;
-  place-items: center !important;
-
-  width: 32px !important;
-  height: 42px !important;
-
-  border: 1px solid var(--ac-border) !important;
+.ac-mini-card {
+  border: 1px solid rgba(255, 255, 255, 0.38) !important;
   border-radius: 15px !important;
 
-  background: #fff !important;
-  box-shadow: 0 3px 10px rgba(30, 60, 50, 0.08) !important;
+  box-shadow:
+    0 8px 18px rgba(27, 54, 45, 0.13) !important;
 
-  transform: translateY(-50%) !important;
+  color: #fff !important;
+
+  transition:
+    transform 170ms ease,
+    box-shadow 170ms ease,
+    border-color 170ms ease;
 }
 
-.ac-carousel-arrow.previous {
-  left: -1px !important;
+.ac-mini-card:hover {
+  transform: translateY(-3px);
+
+  box-shadow:
+    0 13px 24px rgba(27, 54, 45, 0.18) !important;
 }
 
-.ac-carousel-arrow.next {
-  right: -1px !important;
+.ac-mini-card.bank {
+  background:
+    radial-gradient(
+      circle at 88% 8%,
+      rgba(255, 255, 255, 0.16),
+      transparent 34%
+    ),
+    linear-gradient(
+      145deg,
+      #31997f,
+      #17725e
+    ) !important;
 }
 
-/* Wider carousel cards so labels do not overlap */
+/* Give each visible bank card a different tone */
 
-.ac-mini-card {
-  position: relative !important;
-
-  flex: 0 0 clamp(205px, 15.5vw, 238px) !important;
-
-  width: auto !important;
-  min-width: 205px !important;
-  max-width: none !important;
-  min-height: 150px !important;
-  height: auto !important;
-
-  padding: 14px !important;
-
-  border-radius: 12px !important;
-
-  text-align: left !important;
-  scroll-snap-align: start !important;
-
-  overflow: hidden !important;
+.ac-mini-card.bank:nth-child(2) {
+  background:
+    radial-gradient(
+      circle at 88% 8%,
+      rgba(255, 255, 255, 0.16),
+      transparent 34%
+    ),
+    linear-gradient(
+      145deg,
+      #387cb8,
+      #245c96
+    ) !important;
 }
 
-.ac-mini-card > div {
-  display: flex !important;
-  align-items: flex-start !important;
-  justify-content: flex-start !important;
-
-  min-width: 0 !important;
-
-  gap: 10px !important;
+.ac-mini-card.bank:nth-child(3) {
+  background:
+    radial-gradient(
+      circle at 88% 8%,
+      rgba(255, 255, 255, 0.16),
+      transparent 34%
+    ),
+    linear-gradient(
+      145deg,
+      #21aeb8,
+      #16818d
+    ) !important;
 }
 
-.ac-mini-card > div > i,
-.ac-mini-card > div > svg,
-.ac-mini-card > div > img {
-  flex: 0 0 auto !important;
+.ac-mini-card.bank:nth-child(4) {
+  background:
+    radial-gradient(
+      circle at 88% 8%,
+      rgba(255, 255, 255, 0.16),
+      transparent 34%
+    ),
+    linear-gradient(
+      145deg,
+      #4169b8,
+      #29438a
+    ) !important;
 }
 
-.ac-mini-card > div > span,
-.ac-mini-card > div > div {
-  min-width: 0 !important;
-  max-width: 100% !important;
+.ac-mini-card.bank:nth-child(5) {
+  background:
+    radial-gradient(
+      circle at 88% 8%,
+      rgba(255, 255, 255, 0.16),
+      transparent 34%
+    ),
+    linear-gradient(
+      145deg,
+      #6f6cc2,
+      #474692
+    ) !important;
+}
+
+.ac-mini-card.bank:nth-child(6) {
+  background:
+    radial-gradient(
+      circle at 88% 8%,
+      rgba(255, 255, 255, 0.16),
+      transparent 34%
+    ),
+    linear-gradient(
+      145deg,
+      #343a40,
+      #171b1f
+    ) !important;
+}
+
+.ac-mini-card.credit {
+  background:
+    radial-gradient(
+      circle at 88% 8%,
+      rgba(255, 255, 255, 0.16),
+      transparent 35%
+    ),
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--ac-card-color) 90%, white),
+      var(--ac-card-color)
+    ) !important;
+}
+
+.ac-mini-card.selected {
+  border-color: #66d6a8 !important;
+
+  box-shadow:
+    0 0 0 3px rgba(63, 193, 135, 0.18),
+    0 13px 25px rgba(24, 103, 73, 0.19) !important;
 }
 
 .ac-mini-card b,
+.ac-mini-card strong {
+  color: #fff !important;
+}
+
 .ac-mini-card span,
-.ac-mini-card strong,
-.ac-mini-card small,
-.ac-mini-card em {
-  max-width: 100% !important;
-
-  line-height: 1.25 !important;
-  overflow-wrap: anywhere !important;
-  word-break: normal !important;
-}
-
-.ac-mini-card > b {
-  margin-top: 10px !important;
-  font-size: 0.78rem !important;
-}
-
-.ac-mini-card > span {
-  margin-top: 3px !important;
-  font-size: 0.67rem !important;
-}
-
-.ac-mini-card > strong {
-  margin-top: 15px !important;
-
-  font-size: 0.9rem !important;
-  white-space: nowrap !important;
+.ac-mini-card small {
+  color: rgba(255, 255, 255, 0.82) !important;
 }
 
 .ac-mini-card > em {
-  right: 9px !important;
-  bottom: 9px !important;
+  background: rgba(255, 255, 255, 0.17) !important;
+  color: #fff !important;
+  backdrop-filter: blur(5px);
+}
 
-  max-width: 75px !important;
-  padding: 4px 7px !important;
+/* Carousel arrows */
 
-  font-size: 0.57rem !important;
-  white-space: nowrap !important;
+.ac-carousel-arrow {
+  color: var(--ac-ink) !important;
+  border: 1px solid #dbe7e2 !important;
+  background: rgba(255, 255, 255, 0.97) !important;
+
+  box-shadow:
+    0 6px 15px rgba(24, 65, 52, 0.11) !important;
+
+  transition:
+    transform 150ms ease,
+    color 150ms ease,
+    border-color 150ms ease;
+}
+
+.ac-carousel-arrow:hover {
+  color: var(--ac-green) !important;
+  border-color: rgba(21, 150, 105, 0.35) !important;
 }
 
 /* ---------------------------------------------------------
-   SELECTED ACCOUNT OR CREDIT CARD
-
-   The selected-card area remains below the carousel.
+   SELECTED CARD
    --------------------------------------------------------- */
 
 .ac-selected-detail {
-  display: grid !important;
+  border: 1px solid #dce7e3 !important;
+  border-radius: 14px !important;
 
-  grid-template-columns:
-    minmax(300px, 0.72fr)
-    minmax(0, 1.28fr) !important;
+  background:
+    linear-gradient(
+      145deg,
+      #ffffff,
+      #fbfdfc
+    ) !important;
 
-  width: auto !important;
-  min-width: 0 !important;
-  min-height: 222px !important;
-  height: auto !important;
-
-  gap: 0 !important;
-
-  margin: 0 10px 10px !important;
-
-  border: 1px solid var(--ac-border) !important;
-  border-radius: 10px !important;
-
-  overflow: hidden !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
 }
+
+/* Large card base */
 
 .ac-large-bank-card,
 .ac-large-credit-card {
-  position: relative !important;
+  border-radius: 15px !important;
 
-  min-width: 0 !important;
-  min-height: 198px !important;
-  height: auto !important;
-
-  margin: 10px !important;
-  padding: 18px !important;
-
-  border-radius: 12px !important;
-
-  overflow: hidden !important;
+  box-shadow:
+    0 12px 28px rgba(28, 51, 45, 0.18) !important;
 }
 
-.ac-large-bank-card > div,
-.ac-large-credit-card > div {
-  min-width: 0 !important;
+.ac-large-bank-card {
+  background:
+    radial-gradient(
+      circle at 95% 10%,
+      rgba(255, 255, 255, 0.2),
+      transparent 37%
+    ),
+    repeating-linear-gradient(
+      155deg,
+      transparent 0 12px,
+      rgba(255, 255, 255, 0.035) 12px 14px
+    ),
+    linear-gradient(
+      145deg,
+      #29947a,
+      #146f5b
+    ) !important;
 }
 
-.ac-large-bank-card span,
-.ac-large-credit-card span {
-  min-width: 0 !important;
-  max-width: 100% !important;
+.ac-large-credit-card {
+  background:
+    radial-gradient(
+      circle at 95% 10%,
+      rgba(255, 255, 255, 0.18),
+      transparent 36%
+    ),
+    repeating-linear-gradient(
+      155deg,
+      transparent 0 12px,
+      rgba(255, 255, 255, 0.04) 12px 14px
+    ),
+    linear-gradient(
+      145deg,
+      #e3323a,
+      #b9101e
+    ) !important;
+
+  color: #fff !important;
 }
 
-.ac-large-bank-card small,
-.ac-large-bank-card em,
-.ac-large-bank-card b,
-.ac-large-bank-card strong,
+/* Keep all card text visible */
+
+.ac-large-credit-card *,
+.ac-large-bank-card * {
+  color: #fff !important;
+}
+
 .ac-large-credit-card small,
 .ac-large-credit-card em,
-.ac-large-credit-card b,
-.ac-large-credit-card strong {
-  max-width: 100% !important;
-
-  line-height: 1.25 !important;
-  overflow-wrap: anywhere !important;
+.ac-large-bank-card small,
+.ac-large-bank-card em {
+  color: rgba(255, 255, 255, 0.78) !important;
 }
 
-.ac-large-bank-card > strong,
-.ac-large-credit-card > strong {
-  bottom: 18px !important;
-  left: 18px !important;
-
-  max-width: calc(100% - 36px) !important;
-
-  font-size: clamp(1.25rem, 1.6vw, 1.65rem) !important;
-  white-space: nowrap !important;
-}
+/* Details side */
 
 .ac-detail-content {
-  display: grid !important;
-  grid-template-rows: auto auto auto !important;
-
-  min-width: 0 !important;
-  height: auto !important;
-
-  border-left: 1px solid var(--ac-border) !important;
-  background: #fff !important;
+  background:
+    linear-gradient(
+      145deg,
+      #ffffff,
+      #fcfefd
+    ) !important;
 }
-
-/* Credit limit / available credit / utilization */
 
 .ac-credit-limit-strip {
-  display: grid !important;
-
-  grid-template-columns:
-    repeat(2, minmax(0, 1fr))
-    minmax(82px, 0.42fr) !important;
-
-  min-width: 0 !important;
-  min-height: 84px !important;
-  height: auto !important;
-}
-
-/* Card Type, Limit, Statement Date, Due Date */
-
-.ac-detail-summary.compact {
-  display: grid !important;
-  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-
-  min-width: 0 !important;
-  min-height: 70px !important;
-  height: auto !important;
-
-  border-top: 1px solid var(--ac-border) !important;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(248, 252, 250, 0.9),
+      rgba(255, 255, 255, 0.98)
+    ) !important;
 }
 
 .ac-metric {
-  display: grid !important;
-  align-content: center !important;
-
-  min-width: 0 !important;
-
-  gap: 4px !important;
-  padding: 10px 12px !important;
-
-  border-right: 1px solid var(--ac-border) !important;
+  transition: background 150ms ease;
 }
 
-.ac-metric:last-child {
-  border-right: 0 !important;
-}
-
-.ac-metric small,
-.ac-metric strong,
-.ac-metric span,
-.ac-metric em {
-  display: block !important;
-
-  min-width: 0 !important;
-  max-width: 100% !important;
-
-  line-height: 1.25 !important;
-  overflow-wrap: anywhere !important;
+.ac-metric:hover {
+  background: rgba(22, 150, 105, 0.035) !important;
 }
 
 .ac-metric small {
-  font-size: 0.64rem !important;
+  color: var(--ac-muted) !important;
 }
 
 .ac-metric strong {
-  font-size: clamp(0.78rem, 0.9vw, 1rem) !important;
+  color: var(--ac-ink) !important;
 }
 
-.ac-gauge {
-  display: grid !important;
-  place-items: center !important;
-
-  min-width: 0 !important;
-
-  padding: 8px !important;
-}
+/* Utilization gauge */
 
 .ac-gauge > span {
-  width: 55px !important;
-  height: 55px !important;
+  background:
+    radial-gradient(
+      circle at center,
+      #fff 55%,
+      transparent 57%
+    ),
+    conic-gradient(
+      var(--ac-green) calc(var(--value) * 1%),
+      #e7efec 0
+    ) !important;
+
+  box-shadow:
+    0 3px 10px rgba(25, 82, 62, 0.08) !important;
 }
 
-.ac-gauge small {
-  font-size: 0.62rem !important;
+/* Selected card actions */
+
+.ac-detail-actions button {
+  border: 1px solid #d8e4df !important;
+  background:
+    linear-gradient(
+      145deg,
+      #ffffff,
+      #f8fbfa
+    ) !important;
+
+  color: var(--ac-ink) !important;
+
+  box-shadow:
+    0 2px 5px rgba(25, 55, 45, 0.035) !important;
+
+  transition:
+    transform 150ms ease,
+    border-color 150ms ease,
+    background 150ms ease,
+    box-shadow 150ms ease;
 }
 
-/* Fix overlapping action buttons */
+.ac-detail-actions button:hover {
+  transform: translateY(-1px);
 
-.ac-detail-actions {
-  display: grid !important;
+  border-color: rgba(21, 150, 105, 0.34) !important;
 
-  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  background: var(--ac-green-soft) !important;
 
-  width: 100% !important;
-  min-width: 0 !important;
+  color: var(--ac-green-dark) !important;
 
-  gap: 7px !important;
-  padding: 9px 11px !important;
-
-  border-top: 1px solid var(--ac-border) !important;
-
-  overflow: visible !important;
+  box-shadow:
+    0 6px 12px rgba(25, 55, 45, 0.08) !important;
 }
 
-.ac-detail-actions button,
+.ac-detail-actions button.primary,
 .ac-detail-actions .primary {
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
+  border-color: transparent !important;
 
-  width: 100% !important;
-  min-width: 0 !important;
-  min-height: 36px !important;
+  background:
+    linear-gradient(
+      135deg,
+      var(--ac-green),
+      var(--ac-green-dark)
+    ) !important;
 
-  gap: 6px !important;
-  padding: 7px 8px !important;
+  color: #fff !important;
 
-  border-radius: 10px !important;
-
-  font-size: 0.72rem !important;
-  line-height: 1.1 !important;
-  white-space: nowrap !important;
+  box-shadow:
+    0 7px 15px rgba(21, 150, 105, 0.25) !important;
 }
 
-.ac-detail-actions button svg {
-  flex: 0 0 auto !important;
+.ac-detail-actions button.primary:hover,
+.ac-detail-actions .primary:hover {
+  background:
+    linear-gradient(
+      135deg,
+      #1aa875,
+      #0d6848
+    ) !important;
 
-  width: 14px !important;
-  height: 14px !important;
-}
-
-/* ---------------------------------------------------------
-   INSIGHT CARDS
-
-   Statement is full width.
-   Spending and Timeline sit side by side on desktop.
-   Account Health is full width.
-   --------------------------------------------------------- */
-
-.ac-insight-card.statement,
-.ac-insight-card.health {
-  grid-column: 1 / -1 !important;
-}
-
-/*
-  The dashboard temporarily changes to two columns for these
-  two cards. The order keeps them below the wallet panel.
-*/
-
-.ac-dashboard {
-  grid-template-columns:
-    minmax(0, 1.32fr)
-    minmax(315px, 0.68fr) !important;
-}
-
-.ac-summary-strip,
-.ac-wallet-panel,
-.ac-insight-card.statement,
-.ac-insight-card.health,
-.ac-history {
-  grid-column: 1 / -1 !important;
-}
-
-.ac-insight-card.spending {
-  grid-column: 1 !important;
-}
-
-.ac-insight-card.timeline {
-  grid-column: 2 !important;
-}
-
-/* Insight headers */
-
-.ac-insight-title {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-
-  min-width: 0 !important;
-  min-height: 42px !important;
-
-  gap: 10px !important;
-  padding: 8px 12px !important;
-
-  border-bottom: 1px solid var(--ac-border) !important;
-}
-
-.ac-insight-title h3,
-.ac-insight-title small,
-.ac-insight-title span {
-  min-width: 0 !important;
-  max-width: 100% !important;
-
-  margin: 0 !important;
-
-  line-height: 1.25 !important;
-  overflow-wrap: anywhere !important;
-}
-
-.ac-insight-title h3 {
-  font-size: 0.78rem !important;
-}
-
-.ac-insight-title button {
-  flex: 0 0 auto !important;
-
-  width: auto !important;
-  min-width: 0 !important;
-  min-height: 29px !important;
-
-  padding: 5px 9px !important;
-
-  font-size: 0.63rem !important;
-  white-space: nowrap !important;
+  color: #fff !important;
 }
 
 /* ---------------------------------------------------------
    STATEMENT OVERVIEW
    --------------------------------------------------------- */
 
-.ac-statement-grid {
-  display: grid !important;
-
-  grid-template-columns:
-    repeat(2, minmax(0, 1fr))
-    minmax(160px, 0.75fr) !important;
-
-  min-width: 0 !important;
-  min-height: 118px !important;
-  height: auto !important;
-}
-
-.ac-statement-grid > * {
-  min-width: 0 !important;
+.ac-insight-card.statement {
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.99),
+      rgba(249, 253, 251, 0.98)
+    ) !important;
 }
 
 .ac-statement-grid .ac-metric {
-  min-height: 58px !important;
-  padding: 9px 12px !important;
+  background:
+    linear-gradient(
+      145deg,
+      #ffffff,
+      #fbfdfc
+    ) !important;
+}
+
+.ac-statement-grid .ac-metric:hover {
+  background: var(--ac-green-soft) !important;
 }
 
 .ac-days-due {
-  grid-column: 3 !important;
-  grid-row: 1 / span 2 !important;
+  position: relative;
+  overflow: hidden;
 
-  display: grid !important;
-  place-items: center !important;
-
-  min-width: 0 !important;
-
-  gap: 4px !important;
-  padding: 12px !important;
-
-  text-align: center !important;
+  background:
+    radial-gradient(
+      circle at 75% 30%,
+      rgba(65, 190, 138, 0.12),
+      transparent 42%
+    ),
+    linear-gradient(
+      145deg,
+      #f9fdfb,
+      #ffffff
+    ) !important;
 }
 
-.ac-days-due > span {
-  display: flex !important;
-  align-items: baseline !important;
-  justify-content: center !important;
+.ac-days-due::before {
+  content: "";
+  position: absolute;
+  width: 82px;
+  height: 82px;
 
-  max-width: 100% !important;
+  border: 9px solid rgba(21, 150, 105, 0.1);
+  border-top-color: var(--ac-green);
+  border-radius: 50%;
 
-  gap: 4px !important;
-  flex-wrap: wrap !important;
+  right: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.ac-days-due > * {
+  position: relative;
+  z-index: 1;
 }
 
 .ac-days-due b {
-  font-size: 1.6rem !important;
-  line-height: 1 !important;
+  color: var(--ac-green) !important;
 }
 
 .ac-days-due em,
-.ac-days-due small,
-.ac-days-due span {
-  max-width: 100% !important;
-  overflow-wrap: anywhere !important;
+.ac-days-due small {
+  color: var(--ac-muted) !important;
 }
 
 /* ---------------------------------------------------------
-   SPENDING BY CATEGORY
+   SPENDING GRAPH
    --------------------------------------------------------- */
 
 .ac-insight-card.spending {
-  min-width: 0 !important;
-  min-height: 236px !important;
+  background:
+    radial-gradient(
+      circle at 0 100%,
+      rgba(42, 184, 136, 0.07),
+      transparent 35%
+    ),
+    #fff !important;
 }
 
 .ac-spending-body {
-  display: grid !important;
-
-  grid-template-columns:
-    minmax(115px, 0.55fr)
-    minmax(250px, 1.45fr) !important;
-
-  align-items: center !important;
-
-  min-width: 0 !important;
-  min-height: 190px !important;
-  height: auto !important;
-
-  gap: 14px !important;
-  padding: 12px 14px !important;
-
-  overflow: visible !important;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.98),
+      rgba(250, 253, 252, 0.96)
+    ) !important;
 }
 
-.ac-donut {
-  width: 112px !important;
-  height: 112px !important;
+/* Donut chart */
 
-  margin-inline: auto !important;
+.ac-donut {
+  position: relative;
+
+  background:
+    conic-gradient(
+      #32a96f 0% 31.2%,
+      #72a0db 31.2% 54.3%,
+      #f1ad43 54.3% 72%,
+      #ee6f67 72% 89.3%,
+      #9a79d2 89.3% 100%
+    ) !important;
+
+  box-shadow:
+    0 7px 18px rgba(32, 86, 66, 0.12) !important;
+}
+
+.ac-donut::after {
+  content: "";
+  position: absolute;
+  inset: 11px;
+
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.7);
 }
 
 .ac-donut > span {
-  width: 67px !important;
-  height: 67px !important;
+  position: relative;
+  z-index: 2;
 
-  text-align: center !important;
+  background:
+    linear-gradient(
+      145deg,
+      #ffffff,
+      #f9fcfb
+    ) !important;
+
+  box-shadow:
+    0 3px 12px rgba(27, 54, 45, 0.08) !important;
 }
 
-.ac-donut strong,
+.ac-donut strong {
+  color: var(--ac-ink) !important;
+}
+
 .ac-donut small {
-  max-width: 100% !important;
-
-  line-height: 1.15 !important;
-  overflow-wrap: anywhere !important;
+  color: var(--ac-muted) !important;
 }
+
+/* Chart legend */
 
 .ac-spending-list {
-  display: grid !important;
-
-  min-width: 0 !important;
-
-  gap: 8px !important;
+  padding: 4px 0 !important;
 }
 
 .ac-spending-list > div {
-  display: grid !important;
+  padding: 5px 7px !important;
+  border-radius: 8px !important;
 
-  grid-template-columns:
-    9px
-    minmax(110px, 1fr)
-    minmax(75px, auto)
-    minmax(42px, auto) !important;
-
-  align-items: center !important;
-
-  min-width: 0 !important;
-
-  gap: 8px !important;
-
-  font-size: 0.7rem !important;
+  transition: background 150ms ease;
 }
 
-.ac-spending-list > div > * {
-  min-width: 0 !important;
+.ac-spending-list > div:hover {
+  background: #f4f9f7 !important;
 }
 
-.ac-spending-list span {
-  line-height: 1.2 !important;
-  overflow-wrap: anywhere !important;
+.ac-spending-list > div:nth-child(1) i {
+  background: #32a96f !important;
 }
 
-.ac-spending-list strong,
+.ac-spending-list > div:nth-child(2) i {
+  background: #72a0db !important;
+}
+
+.ac-spending-list > div:nth-child(3) i {
+  background: #f1ad43 !important;
+}
+
+.ac-spending-list > div:nth-child(4) i {
+  background: #ee6f67 !important;
+}
+
+.ac-spending-list > div:nth-child(5) i {
+  background: #9a79d2 !important;
+}
+
+.ac-spending-list strong {
+  color: var(--ac-ink) !important;
+}
+
 .ac-spending-list em {
-  justify-self: end !important;
-
-  line-height: 1.2 !important;
-  white-space: nowrap !important;
+  color: var(--ac-muted) !important;
 }
 
 /* ---------------------------------------------------------
@@ -929,172 +853,117 @@
    --------------------------------------------------------- */
 
 .ac-insight-card.timeline {
-  min-width: 0 !important;
-  min-height: 236px !important;
-}
-
-.ac-timeline {
-  position: relative !important;
-
-  display: grid !important;
-
-  min-width: 0 !important;
-
-  gap: 0 !important;
-  padding: 6px 11px !important;
-}
-
-.ac-timeline::before {
-  content: "" !important;
-
-  position: absolute !important;
-  top: 23px !important;
-  bottom: 23px !important;
-  left: 20px !important;
-
-  border-left: 1px dashed #b8c8c1 !important;
+  background:
+    linear-gradient(
+      145deg,
+      #ffffff,
+      #fbfdfc
+    ) !important;
 }
 
 .ac-timeline > div {
-  position: relative !important;
-  z-index: 1 !important;
+  border-radius: 9px !important;
+  padding: 3px 5px !important;
 
-  display: grid !important;
+  transition: background 150ms ease;
+}
 
-  grid-template-columns:
-    18px
-    minmax(0, 1fr)
-    18px !important;
-
-  align-items: center !important;
-
-  min-width: 0 !important;
-  min-height: 44px !important;
-
-  gap: 8px !important;
+.ac-timeline > div:hover {
+  background: #f4f9f7 !important;
 }
 
 .ac-timeline > div > svg {
-  width: 15px !important;
-  height: 15px !important;
-
-  background: #fff !important;
+  color: #8a9ba2 !important;
 }
 
-.ac-timeline > div span {
-  min-width: 0 !important;
-  max-width: 100% !important;
+.ac-timeline > div.done > svg {
+  color: var(--ac-green) !important;
 }
 
-.ac-timeline b,
-.ac-timeline small {
-  max-width: 100% !important;
-
-  line-height: 1.2 !important;
-  overflow-wrap: anywhere !important;
-}
-
-.ac-timeline b {
-  font-size: 0.67rem !important;
+.ac-timeline > div.done b {
+  color: var(--ac-green-dark) !important;
 }
 
 .ac-timeline small {
-  font-size: 0.62rem !important;
+  color: var(--ac-muted) !important;
 }
 
 .ac-due-alert {
-  display: flex !important;
-  align-items: center !important;
+  border: 1px solid rgba(239, 92, 85, 0.08) !important;
 
-  min-width: 0 !important;
+  background:
+    linear-gradient(
+      90deg,
+      #fff0ee,
+      #fff5f4
+    ) !important;
 
-  gap: 7px !important;
-  margin: 0 10px 9px !important;
-  padding: 8px 10px !important;
-
-  border-radius: 8px !important;
-
-  font-size: 0.65rem !important;
-
-  overflow: hidden !important;
+  color: var(--ac-red) !important;
 }
 
-.ac-due-alert > * {
-  min-width: 0 !important;
+/* View buttons */
+
+.ac-insight-title button {
+  border: 1px solid #d8e5df !important;
+  background: #fff !important;
+  color: var(--ac-green-dark) !important;
+
+  box-shadow:
+    0 2px 5px rgba(25, 55, 45, 0.035) !important;
 }
 
-.ac-due-alert span,
-.ac-due-alert strong {
-  max-width: 100% !important;
-  overflow-wrap: anywhere !important;
+.ac-insight-title button:hover {
+  background: var(--ac-green-soft) !important;
 }
 
 /* ---------------------------------------------------------
    ACCOUNT HEALTH
    --------------------------------------------------------- */
 
-.ac-health-grid {
-  display: grid !important;
-
-  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-
-  width: 100% !important;
-  min-width: 0 !important;
-
-  padding: 5px 8px 8px !important;
+.ac-insight-card.health {
+  background:
+    linear-gradient(
+      145deg,
+      #ffffff,
+      #fbfdfc
+    ) !important;
 }
 
 .ac-health-item {
-  display: flex !important;
-  align-items: center !important;
-
-  min-width: 0 !important;
-
-  gap: 8px !important;
-  padding: 8px 11px !important;
-
-  border-right: 1px solid var(--ac-border) !important;
+  border-radius: 10px !important;
+  transition:
+    background 150ms ease,
+    transform 150ms ease;
 }
 
-.ac-health-item:last-child {
-  border-right: 0 !important;
+.ac-health-item:hover {
+  transform: translateY(-1px);
+  background: var(--ac-green-soft) !important;
 }
 
 .ac-health-item > i {
-  display: grid !important;
-  place-items: center !important;
+  border: 3px solid #dff2e9 !important;
 
-  flex: 0 0 34px !important;
+  background:
+    linear-gradient(
+      145deg,
+      #ffffff,
+      #f1fbf6
+    ) !important;
 
-  width: 34px !important;
-  height: 34px !important;
-}
+  color: var(--ac-green) !important;
 
-.ac-health-item > span {
-  display: grid !important;
-
-  min-width: 0 !important;
-  max-width: 100% !important;
-
-  gap: 1px !important;
-}
-
-.ac-health-item small,
-.ac-health-item b,
-.ac-health-item em {
-  max-width: 100% !important;
-
-  line-height: 1.2 !important;
-  overflow-wrap: anywhere !important;
-}
-
-.ac-health-item small,
-.ac-health-item em {
-  font-size: 0.59rem !important;
+  box-shadow:
+    0 4px 10px rgba(21, 150, 105, 0.09) !important;
 }
 
 .ac-health-item b {
-  font-size: 0.68rem !important;
+  color: var(--ac-green-dark) !important;
+}
+
+.ac-health-item small,
+.ac-health-item em {
+  color: var(--ac-muted) !important;
 }
 
 /* ---------------------------------------------------------
@@ -1102,258 +971,222 @@
    --------------------------------------------------------- */
 
 .ac-history {
-  width: 100% !important;
-  min-width: 0 !important;
-
-  overflow: hidden !important;
+  background:
+    linear-gradient(
+      145deg,
+      #ffffff,
+      #fbfdfc
+    ) !important;
 }
 
 .ac-history-title {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-
-  min-width: 0 !important;
-  min-height: 46px !important;
-
-  gap: 10px !important;
-  padding: 7px 13px !important;
+  border-bottom: 1px solid var(--ac-line) !important;
 }
 
-.ac-history-title > * {
-  min-width: 0 !important;
-}
+/* Filter pills */
 
 .ac-history-filters {
-  max-width: 100% !important;
+  padding: 4px !important;
+
+  border: 1px solid #dbe6e2 !important;
+  border-radius: 12px !important;
+
+  background: #f6faf8 !important;
 }
 
-.ac-history-head,
-.ac-history-row {
-  min-width: 1020px !important;
+.ac-history-filters button {
+  border: 0 !important;
+  border-radius: 9px !important;
 
-  gap: 10px !important;
-  padding: 9px 14px !important;
+  background: transparent !important;
+  color: #60747c !important;
+
+  transition:
+    background 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease;
 }
 
+.ac-history-filters button:hover {
+  background: rgba(21, 150, 105, 0.08) !important;
+  color: var(--ac-green-dark) !important;
+}
+
+.ac-history-filters button.active {
+  background:
+    linear-gradient(
+      135deg,
+      var(--ac-green),
+      var(--ac-green-dark)
+    ) !important;
+
+  color: #fff !important;
+
+  box-shadow:
+    0 4px 10px rgba(21, 150, 105, 0.22) !important;
+}
+
+/* Header row */
+
+.ac-history-head {
+  border-top: 1px solid #edf2f0 !important;
+  border-bottom: 1px solid #e4ece9 !important;
+
+  background:
+    linear-gradient(
+      90deg,
+      #f7faf9,
+      #fbfdfc
+    ) !important;
+
+  color: #718087 !important;
+}
+
+/* Transaction rows */
+
 .ac-history-row {
-  min-height: 52px !important;
+  margin: 0 10px !important;
+  border-top: 0 !important;
+  border-bottom: 1px solid #edf2f0 !important;
+  border-radius: 9px !important;
+
+  background: transparent !important;
+
+  transition:
+    background 150ms ease,
+    transform 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.ac-history-row:hover {
+  position: relative;
+  z-index: 2;
+
+  transform: translateY(-1px);
+
+  background: #f5faf8 !important;
+
+  box-shadow:
+    0 5px 12px rgba(25, 55, 45, 0.055) !important;
+}
+
+.ac-history-row > span:nth-child(2) > i,
+.ac-history-row > span:nth-child(2) > svg {
+  display: grid !important;
+  place-items: center !important;
+
+  width: 34px !important;
+  height: 34px !important;
+
+  border-radius: 10px !important;
+
+  background: var(--ac-orange-soft) !important;
+  color: var(--ac-orange) !important;
+}
+
+.ac-history-row em {
+  border: 1px solid rgba(21, 150, 105, 0.09) !important;
+
+  background: var(--ac-green-soft) !important;
+  color: var(--ac-green-dark) !important;
+}
+
+.ac-history-row .positive {
+  color: var(--ac-green) !important;
+}
+
+.ac-history-row .negative {
+  color: var(--ac-red) !important;
 }
 
 /* ---------------------------------------------------------
-   RESPONSIVE — SMALLER DESKTOP
+   BILLING CYCLE STRIP
    --------------------------------------------------------- */
 
-@media (max-width: 1450px) {
-  .ac-summary-strip {
-    grid-template-columns:
-      minmax(220px, 1.25fr)
-      repeat(4, minmax(145px, 1fr))
-      minmax(210px, auto) !important;
-  }
+.ac-cycle-summary {
+  border: 1px solid rgba(21, 150, 105, 0.09) !important;
+  border-radius: 10px !important;
 
-  .ac-summary-main,
-  .ac-summary-metric {
-    padding-inline: 12px !important;
-  }
+  background:
+    radial-gradient(
+      circle at 100% 50%,
+      rgba(21, 150, 105, 0.08),
+      transparent 26%
+    ),
+    linear-gradient(
+      90deg,
+      #edf8f1,
+      #f9fcfa
+    ) !important;
 
-  .ac-summary-main strong {
-    font-size: 1.25rem !important;
-  }
-
-  .ac-summary-metric strong {
-    font-size: 0.88rem !important;
-  }
-
-  .ac-mini-card {
-    flex-basis: 210px !important;
-  }
-
-  .ac-selected-detail {
-    grid-template-columns:
-      minmax(280px, 0.7fr)
-      minmax(0, 1.3fr) !important;
-  }
-
-  .ac-detail-actions {
-    grid-template-columns: repeat(2, minmax(135px, 1fr)) !important;
-  }
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7) !important;
 }
 
 /* ---------------------------------------------------------
-   RESPONSIVE — TABLET / NARROW DESKTOP
+   SMALLER SCREEN ADJUSTMENTS
    --------------------------------------------------------- */
 
 @media (max-width: 1180px) {
-  .ac-dashboard {
-    grid-template-columns: minmax(0, 1fr) !important;
+  .ac-mini-card.bank:nth-child(n) {
+    background:
+      radial-gradient(
+        circle at 88% 8%,
+        rgba(255, 255, 255, 0.16),
+        transparent 34%
+      ),
+      linear-gradient(
+        145deg,
+        #31997f,
+        #17725e
+      ) !important;
   }
 
-  .ac-summary-strip {
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  .ac-mini-card.bank:nth-child(2) {
+    background:
+      linear-gradient(
+        145deg,
+        #387cb8,
+        #245c96
+      ) !important;
   }
 
-  .ac-summary-main {
-    grid-column: span 2 !important;
+  .ac-mini-card.bank:nth-child(3) {
+    background:
+      linear-gradient(
+        145deg,
+        #21aeb8,
+        #16818d
+      ) !important;
   }
 
-  .ac-view-filter {
-    justify-self: start !important;
+  .ac-mini-card.bank:nth-child(4) {
+    background:
+      linear-gradient(
+        145deg,
+        #4169b8,
+        #29438a
+      ) !important;
   }
 
-  .ac-summary-strip,
-  .ac-wallet-panel,
-  .ac-insight-card.statement,
-  .ac-insight-card.spending,
-  .ac-insight-card.timeline,
-  .ac-insight-card.health,
-  .ac-history {
-    grid-column: 1 / -1 !important;
-  }
-
-  .ac-selected-detail {
-    grid-template-columns:
-      minmax(280px, 0.75fr)
-      minmax(0, 1.25fr) !important;
-  }
-
-  .ac-spending-body {
-    grid-template-columns:
-      minmax(120px, 0.6fr)
-      minmax(250px, 1.4fr) !important;
+  .ac-mini-card.bank:nth-child(5) {
+    background:
+      linear-gradient(
+        145deg,
+        #6f6cc2,
+        #474692
+      ) !important;
   }
 }
-
-/* ---------------------------------------------------------
-   RESPONSIVE — MOBILE
-   --------------------------------------------------------- */
 
 @media (max-width: 780px) {
-  .ac-dashboard {
-    gap: 9px !important;
+  .ac-days-due::before {
+    width: 66px;
+    height: 66px;
+    right: 26px;
   }
 
-  .ac-summary-strip {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
-
-  .ac-summary-main {
-    grid-column: 1 / -1 !important;
-  }
-
-  .ac-view-filter {
-    grid-column: 1 / -1 !important;
-
-    justify-self: stretch !important;
-  }
-
-  .ac-view-filter button {
-    flex: 1 1 0 !important;
-  }
-
-  .ac-section-title {
-    align-items: flex-start !important;
-    flex-direction: column !important;
-  }
-
-  .ac-section-title > button {
-    width: 100% !important;
-  }
-
-  .ac-mini-card {
-    flex: 0 0 205px !important;
-  }
-
-  .ac-selected-detail {
-    grid-template-columns: minmax(0, 1fr) !important;
-  }
-
-  .ac-detail-content {
-    border-top: 1px solid var(--ac-border) !important;
-    border-left: 0 !important;
-  }
-
-  .ac-credit-limit-strip {
-    grid-template-columns:
-      repeat(2, minmax(0, 1fr))
-      minmax(80px, 0.5fr) !important;
-  }
-
-  .ac-detail-summary.compact,
-  .ac-health-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
-
-  .ac-detail-actions {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
-
-  .ac-statement-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
-
-  .ac-days-due {
-    grid-column: 1 / -1 !important;
-    grid-row: auto !important;
-
-    border-top: 1px solid var(--ac-border) !important;
-  }
-
-  .ac-spending-body {
-    grid-template-columns: minmax(0, 1fr) !important;
-  }
-
-  .ac-spending-list > div {
-    grid-template-columns:
-      9px
-      minmax(90px, 1fr)
-      auto
-      auto !important;
-  }
-
-  .ac-donut {
-    margin-inline: auto !important;
-  }
-}
-
-/* ---------------------------------------------------------
-   VERY SMALL MOBILE
-   --------------------------------------------------------- */
-
-@media (max-width: 520px) {
-  .ac-summary-strip {
-    grid-template-columns: minmax(0, 1fr) !important;
-  }
-
-  .ac-summary-main,
-  .ac-view-filter {
-    grid-column: 1 !important;
-  }
-
-  .ac-carousel-wrap {
-    padding-inline: 24px !important;
-  }
-
-  .ac-mini-card {
-    flex-basis: 195px !important;
-    min-width: 195px !important;
-  }
-
-  .ac-credit-limit-strip,
-  .ac-detail-summary.compact,
-  .ac-health-grid,
-  .ac-detail-actions {
-    grid-template-columns: minmax(0, 1fr) !important;
-  }
-
-  .ac-metric,
-  .ac-health-item {
-    border-right: 0 !important;
-    border-bottom: 1px solid var(--ac-border) !important;
-  }
-
-  .ac-metric:last-child,
-  .ac-health-item:last-child {
-    border-bottom: 0 !important;
+  .ac-history-title {
+    background: #fff !important;
   }
 }
