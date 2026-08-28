@@ -170,13 +170,80 @@ function CashFlowChart() {
   </div>
 }
 
+const cashFlowSyncNormalize = (value = "") => value.toLowerCase().replace(/\s+/g, " ").trim()
+const cashFlowSyncCents = (value: unknown) => Math.round(numeric(value) * 100)
+const cashFlowRecordDate = (record: any) => String(record?.date || record?.expectedDate || record?.dueDate || "")
+const cashFlowRecordAccount = (record: any) => String(record?.accountName || record?.account || record?.autopayAccount || "")
+const cashFlowRecordMatchesTransaction = (
+  record: any,
+  transaction: { category: string; amount: number; date: string; accountName: string; kind: "Income" | "Expense" },
+) => {
+  if (!record) return false
+  if (transaction.kind === "Income" && record.type && record.type !== "Income") return false
+  if (transaction.kind === "Expense" && record.type === "Income") return false
+  const recordCategory = cashFlowSyncNormalize(String(record.category || ""))
+  const transactionCategory = cashFlowSyncNormalize(transaction.category)
+  const recordAccount = cashFlowSyncNormalize(cashFlowRecordAccount(record))
+  const transactionAccount = cashFlowSyncNormalize(transaction.accountName)
+  return recordCategory === transactionCategory &&
+    cashFlowSyncCents(record.amount) === cashFlowSyncCents(transaction.amount) &&
+    cashFlowRecordDate(record) === transaction.date &&
+    (!recordAccount || recordAccount === transactionAccount)
+}
+
 function AddTransaction({ onClose, initialType='Expense' }: { onClose: () => void; initialType?:string }) {
   const [type, setType] = useState(initialType)
   const [saved, setSaved] = useState(false)
   const [wallet,saveWallet]=useWalletSnapshot<any>({accounts:[],cards:[],accountTransactions:[],transactions:[]})
+  const [,setCashFlowIncome]=useFirestoreState<any[]>('income',[])
+  const [,setPlanning]=useFirestoreState<any[]>('planning',[])
+  const [,setPlannedPayments]=useFirestoreState<any[]>('plannedPayments',[])
+  const [,setBills]=useFirestoreState<any[]>('bills',[])
+  const syncTransactionToCashFlow = (transaction: { id: number; type: string; category: string; amount: number; date: string; accountName: string }) => {
+    const isIncome = transaction.type === "Income"
+    const syncPayload = {
+      category: transaction.category,
+      amount: transaction.amount,
+      date: transaction.date,
+      accountName: transaction.accountName,
+      kind: isIncome ? "Income" as const : "Expense" as const,
+    }
+    if (isIncome) {
+      const markReceived = (record: any) => ({
+        ...record,
+        status: "Received",
+        actualAmount: transaction.amount,
+        receivedAmount: transaction.amount,
+        actualDate: transaction.date,
+        receivedDate: transaction.date,
+        receivedOccurrenceDate: cashFlowRecordDate(record),
+        account: record.account || transaction.accountName,
+        accountName: record.accountName || transaction.accountName,
+        linkedTransactionId: transaction.id,
+      })
+      setCashFlowIncome((current) => current.map((record) => cashFlowRecordMatchesTransaction(record, syncPayload) ? markReceived(record) : record))
+      setPlanning((current) => current.map((record) => cashFlowRecordMatchesTransaction(record, syncPayload) ? markReceived(record) : record))
+      return
+    }
+    const markPaid = (record: any) => ({
+      ...record,
+      status: "Paid",
+      actualAmount: transaction.amount,
+      paidAmount: transaction.amount,
+      actualDate: transaction.date,
+      paymentDate: transaction.date,
+      paidOccurrenceDate: cashFlowRecordDate(record),
+      account: record.account || transaction.accountName,
+      accountName: record.accountName || transaction.accountName,
+      linkedTransactionId: transaction.id,
+    })
+    setPlanning((current) => current.map((record) => cashFlowRecordMatchesTransaction(record, syncPayload) ? markPaid(record) : record))
+    setPlannedPayments((current) => current.map((record) => cashFlowRecordMatchesTransaction(record, syncPayload) ? markPaid(record) : record))
+    setBills((current) => current.map((record) => cashFlowRecordMatchesTransaction(record, syncPayload) ? markPaid(record) : record))
+  }
   return <div className="modal-backdrop" onMouseDown={onClose}><section className="modal" onMouseDown={e => e.stopPropagation()} aria-modal="true" role="dialog">
     <div className="modal-head"><div><h2>Add transaction</h2><p>Record money coming in or going out.</p></div><button aria-label="Close" className="icon-button" onClick={onClose}><X/></button></div>
-    {saved ? <div className="success"><span><Check/></span><h3>Transaction added</h3><p>Your balance and forecast are up to date.</p><button className="primary" onClick={onClose}>Done</button></div> : <form onSubmit={e => {e.preventDefault();const form=new FormData(e.currentTarget),accountName=String(form.get('account')),account=(wallet.accounts??[]).find((item:any)=>item.name===accountName),card=(wallet.cards??[]).find((item:any)=>item.name===accountName),id=Date.now(),date=String(form.get('date')),description=String(form.get('description')),category=String(form.get('category')),amount=Number(form.get('amount')),effect=type==='Income'?amount:type==='Expense'?-amount:0,next=card?{...wallet,transactions:[...(wallet.transactions??[]),{id,cardId:card.id,type:type==='Expense'?'purchase':type==='Income'?'credit':'payment',description,category,amount,transactionDate:date,postedDate:date,status:'posted',notes:'',expenseCounted:type==='Expense'}]}:{...wallet,accountTransactions:[...(wallet.accountTransactions??[]),{id,accountId:account?.id,date,description,type,category,amount,status:'Posted',notes:''}],accounts:(wallet.accounts??[]).map((item:any)=>item.id===account?.id?{...item,balance:Number(item.balance||0)+effect}:item)};saveWallet(next);setSaved(true)}}>
+    {saved ? <div className="success"><span><Check/></span><h3>Transaction added</h3><p>Your balance and forecast are up to date.</p><button className="primary" onClick={onClose}>Done</button></div> : <form onSubmit={e => {e.preventDefault();const form=new FormData(e.currentTarget),accountName=String(form.get('account')),account=(wallet.accounts??[]).find((item:any)=>item.name===accountName),card=(wallet.cards??[]).find((item:any)=>item.name===accountName),id=Date.now(),date=String(form.get('date')),description=String(form.get('description')),category=String(form.get('category')),amount=Number(form.get('amount')),effect=type==='Income'?amount:type==='Expense'?-amount:0,next=card?{...wallet,transactions:[...(wallet.transactions??[]),{id,cardId:card.id,type:type==='Expense'?'purchase':type==='Income'?'credit':'payment',description,category,amount,transactionDate:date,postedDate:date,status:'posted',notes:'',expenseCounted:type==='Expense'}]}:{...wallet,accountTransactions:[...(wallet.accountTransactions??[]),{id,accountId:account?.id,date,description,type,category,amount,status:'Posted',notes:''}],accounts:(wallet.accounts??[]).map((item:any)=>item.id===account?.id?{...item,balance:Number(item.balance||0)+effect}:item)};saveWallet(next);syncTransactionToCashFlow({id,type,category,amount,date,accountName});setSaved(true)}}>
       <div className="type-switch">{['Expense','Income'].map(v => <button type="button" key={v} className={type === v ? 'selected' : ''} onClick={() => setType(v)}>{v}</button>)}</div>
       <label>Description<input name="description" required placeholder="e.g. Groceries" autoFocus/></label><CategoryFields/>
       <div className="form-grid"><label>Amount<input name="amount" required type="number" min="0.01" step="0.01" placeholder="₱ 0.00"/></label><label>Date<input name="date" required type="date" defaultValue="2026-07-20"/></label></div>
@@ -365,7 +432,7 @@ export default function App() {
   return <div className={`app-shell${sidebarCollapsed?' sidebar-collapsed':''}`}>
     <Sidebar selected={selected} onSelect={setSelected} collapsed={sidebarCollapsed} onToggle={toggleSidebar}/>
     <main>
-      {(selected === 'Overview' || selected === 'Settings') && <header className={`app-header${selected==='Overview'?' dashboard-hero-header':''}`}>{selected==='Overview'?<section className="dashboard-welcome-hero insight-only-hero" aria-label="Dashboard financial status"><div className={`finance-insight-message financial-status-banner ${dashboardStatus.netCashFlow<0||dashboardStatus.safeToSpend<0?'warning':'healthy'}`}><div><small>Financial status</small><p>{dashboardStatusMessage}</p></div><dl><div><dt>Due within 7 days</dt><dd>{money(dashboardStatus.dueWithinSeven)}</dd></div><div><dt>Safe to spend</dt><dd>{money(dashboardStatus.safeToSpend)}</dd></div><div><dt>Net cash flow</dt><dd className={dashboardStatus.netCashFlow<0?'negative':'positive'}>{money(dashboardStatus.netCashFlow)}</dd></div></dl><div className="financial-status-actions"><button onClick={()=>setSelected('Bills')}>View upcoming bills</button><button onClick={()=>setSelected('Statistics')}>Review cash flow</button></div></div></section>:<div className="header-copy"><h1>{greeting}</h1><p>Manage profile preferences, app settings, categories, and sub-categories.</p></div>}<div className="header-actions">{selected === 'Overview'&&<label className="month dashboard-period"><CalendarDays/><select aria-label="Dashboard date range" value={range} onChange={event=>setRange(event.target.value)}><option value="1">Current month</option><option value="3">Last 3 months</option><option value="6">Last 6 months</option><option value="7">January–July</option><option value="12">Last 12 months</option></select></label>}<TopActionBar unreadCount={unreadNotifications} onAdd={quickAdd} onTransfer={()=>setModal('transfer')} onQuickPay={()=>{setSelected('Bills');setNotice('Select a bill to record its payment.')}} onSearch={()=>setModal('global-search')} onNotifications={()=>setSelected('Notifications')} onProfile={()=>setSelected('Settings')}/></div></header>}
+      {(selected === 'Overview' || selected === 'Settings') && <header className={`app-header${selected==='Overview'?' dashboard-hero-header':''}`}>{selected==='Overview'?<section className="dashboard-welcome-hero insight-only-hero" aria-label="Dashboard financial status"><div className={`finance-insight-message financial-status-banner ${dashboardStatus.netCashFlow<0||dashboardStatus.safeToSpend<0?'warning':'healthy'}`}><div><small>Financial status</small><p>{dashboardStatusMessage}</p></div><dl><div><dt>Due within 7 days</dt><dd>{money(dashboardStatus.dueWithinSeven)}</dd></div><div><dt>Safe to spend</dt><dd>{money(dashboardStatus.safeToSpend)}</dd></div><div><dt>Net cash flow</dt><dd className={dashboardStatus.netCashFlow<0?'negative':'positive'}>{money(dashboardStatus.netCashFlow)}</dd></div></dl></div></section>:<div className="header-copy"><h1>{greeting}</h1><p>Manage profile preferences, app settings, categories, and sub-categories.</p></div>}<div className="header-actions">{selected === 'Overview'&&<label className="month dashboard-period"><CalendarDays/><select aria-label="Dashboard date range" value={range} onChange={event=>setRange(event.target.value)}><option value="1">Current month</option><option value="3">Last 3 months</option><option value="6">Last 6 months</option><option value="7">January–July</option><option value="12">Last 12 months</option></select></label>}<TopActionBar unreadCount={unreadNotifications} onAdd={quickAdd} onTransfer={()=>setModal('transfer')} onQuickPay={()=>{setSelected('Bills');setNotice('Select a bill to record its payment.')}} onSearch={()=>setModal('global-search')} onNotifications={()=>setSelected('Notifications')} onProfile={()=>setSelected('Settings')}/></div></header>}
       {selected!=='Overview'&&selected!=='Settings'&&<div className="module-top-action-bar"><TopActionBar unreadCount={unreadNotifications} onAdd={quickAdd} onTransfer={()=>setModal('transfer')} onQuickPay={()=>{setSelected('Bills');setNotice('Select a bill to record its payment.')}} onSearch={()=>setModal('global-search')} onNotifications={()=>setSelected('Notifications')} onProfile={()=>setSelected('Settings')}/></div>}
 
       {selected === 'Overview' ? <DashboardOverview onSelect={setSelected} onNotice={setNotice} rangeMonths={Number(range)}/> : selected === 'Settings' ? <CategorySettings onNotice={setNotice}/> : <FeaturePages page={selected} onAdd={() => setModal(selected === 'Transactions' ? 'transaction' : selected)} onNotice={setNotice}/>} 

@@ -29,12 +29,15 @@ import {
   applyPayment,
   adjustToWeekday,
   calculateDueDate,
+  ensureDueDateAfterStatement,
   CardConfig,
   CardPayment,
   CardStatement,
+  StatementStatus,
   CardTransaction,
   computeCard,
   createInstallmentSchedule,
+  minimumDue as calculateMinimumDue,
   peso,
   previousStatementDate,
   statementCutoffDate,
@@ -47,6 +50,7 @@ const emptyCard: CardConfig = {
   id: 0, bankId: null, name: "", bank: "", last4: "", creditLimit: 0,
   openingBalance: 0, color: "#334155", linkedAccount: "", active: false,
   includeInNetBalance: true,
+  excludeFromCashFlow: false,
   statementDay: 1, dueDateRule: "fixed-next-month", fixedDueDay: 1,
   daysAfterStatement: 21, minimumType: "fixed", minimumFixed: 0,
   minimumPercentage: 0, manualMinimum: 0, interestRate: 0, annualFee: 0,
@@ -64,6 +68,9 @@ type WalletCloudData = {
   transactions: CardTransaction[];
   statements: CardStatement[];
   payments: CardPayment[];
+  deletedCardTransactionKeys?: string[];
+  deletedCardPaymentKeys?: string[];
+  deletedCardPaymentFingerprints?: string[];
 };
 type LocalWalletSnapshot = WalletCloudData & { updatedAt: string };
 type NetWorthFilter = "All" | "Assets" | "Liabilities";
@@ -82,6 +89,25 @@ const loadWallet = <T,>(key: string, fallback: T): T => {
     return fallback;
   }
 };
+const cashFlowSyncNormalize = (value = "") => value.toLowerCase().replace(/\s+/g, " ").trim();
+const cashFlowSyncCents = (value: unknown) => Math.round(Number(String(value ?? 0).replace(/[^0-9.-]/g, "")) * 100);
+const cashFlowRecordDate = (record: any) => String(record?.date || record?.expectedDate || record?.dueDate || "");
+const cashFlowRecordAccount = (record: any) => String(record?.accountName || record?.account || record?.autopayAccount || "");
+const cashFlowRecordMatchesTransaction = (
+  record: any,
+  transaction: { category: string; amount: number; date: string; accountName: string; kind: "Income" | "Expense" },
+) => {
+  if (!record) return false;
+  if (transaction.kind === "Income" && record.type && record.type !== "Income") return false;
+  if (transaction.kind === "Expense" && record.type === "Income") return false;
+  const recordAccount = cashFlowSyncNormalize(cashFlowRecordAccount(record));
+  return (
+    cashFlowSyncNormalize(String(record.category || "")) === cashFlowSyncNormalize(transaction.category) &&
+    cashFlowSyncCents(record.amount) === cashFlowSyncCents(transaction.amount) &&
+    cashFlowRecordDate(record) === transaction.date &&
+    (!recordAccount || recordAccount === cashFlowSyncNormalize(transaction.accountName))
+  );
+};
 const loadLocalWalletSnapshot=():LocalWalletSnapshot|null=>loadWallet<LocalWalletSnapshot|null>("pennywise.wallet.snapshot",null);
 const truthyFlag=(value:unknown)=>value===true||value==="true"||value===1||value==="1"||value==="yes"||value==="on";
 const falseyFlag=(value:unknown)=>value===false||value==="false"||value===0||value==="0"||value==="no"||value==="off";
@@ -90,7 +116,125 @@ const cardIsIncludedInNetWorth=(card:CardConfig)=>{
   if(falseyFlag(card.includeInNetBalance))return false;
   return true;
 };
-const normalizeCards=(items:CardConfig[]=[]):CardConfig[]=>items.map(card=>({...card,includeInNetBalance:cardIsIncludedInNetWorth(card)}));
+const sameCardId=(left:unknown,right:unknown)=>String(left)===String(right);
+const sameCents=(left:unknown,right:unknown)=>Math.abs(Number(left||0)-Number(right||0))<0.005;
+const paymentFingerprint=(cardId:unknown,date:unknown,amount:unknown)=>`${String(cardId)}|${String(date||"")}|${Number(amount||0).toFixed(2)}`;
+const cardTransactionDate=(transaction:CardTransaction)=>transaction.postedDate||transaction.transactionDate;
+const paymentMarker=(notes?:string)=>String(notes||"").match(/(?:bill-payment|card-payment):[^·]+/)?.[0] ?? "";
+const cardTransactionDeleteKeys=(transaction:CardTransaction)=>[
+  paymentMarker(transaction.notes),
+  `${transaction.cardId}|${cardTransactionDate(transaction)}|${transaction.type}|${Number(transaction.amount||0).toFixed(2)}`,
+  `${transaction.cardId}|${cardTransactionDate(transaction)}|${transaction.type}|${Number(transaction.amount||0).toFixed(2)}|${transaction.description}`,
+  `${transaction.cardId}|${cardTransactionDate(transaction)}|${transaction.type}|${String(transaction.amount)}|${transaction.description}`,
+].filter(Boolean);
+const cardTransactionIsDeleted=(transaction:CardTransaction,keys:string[]|Set<string>)=>{
+  const deleted=Array.isArray(keys)?new Set(keys):keys;
+  return cardTransactionDeleteKeys(transaction).some(key=>deleted.has(key));
+};
+const cardPaymentDeleteKeys=(payment:CardPayment)=>[
+  paymentMarker(payment.notes),
+  String(payment.id),
+  `card-payment:${payment.id}`,
+].filter(Boolean);
+const cardPaymentDisplayTransaction=(payment:CardPayment):CardTransaction=>({
+  id:Number(payment.id||0)+1,
+  cardId:payment.cardId,
+  type:"payment",
+  description:`Payment from ${payment.account||"Payment account"}`,
+  category:"Credit Card Payment",
+  amount:Number(payment.amount||0),
+  transactionDate:payment.date,
+  postedDate:payment.date,
+  status:"posted",
+  notes:payment.notes,
+  expenseCounted:false,
+});
+const cardPaymentIsDeleted=(payment:CardPayment,keys:string[]|Set<string>)=>{
+  const deleted=Array.isArray(keys)?new Set(keys):keys;
+  return cardPaymentDeleteKeys(payment).some(key=>deleted.has(key));
+};
+const cardPaymentFingerprint=(payment:CardPayment)=>paymentFingerprint(payment.cardId,payment.date,payment.amount);
+const cardPaymentFingerprintIsDeleted=(payment:CardPayment,keys:string[]|Set<string>)=>{
+  const deleted=Array.isArray(keys)?new Set(keys):keys;
+  return deleted.has(cardPaymentFingerprint(payment));
+};
+const cardTransactionPaymentFingerprint=(transaction:CardTransaction)=>paymentFingerprint(transaction.cardId,cardTransactionDate(transaction),transaction.amount);
+const cardTransactionPaymentFingerprintIsDeleted=(transaction:CardTransaction,keys:string[]|Set<string>)=>{
+  if(transaction.type!=="payment")return false;
+  const deleted=Array.isArray(keys)?new Set(keys):keys;
+  return deleted.has(cardTransactionPaymentFingerprint(transaction));
+};
+const cardPaymentDisplayIsDeleted=(payment:CardPayment,keys:string[]|Set<string>)=>cardTransactionIsDeleted(cardPaymentDisplayTransaction(payment),keys);
+const paymentMatchesTransaction=(payment:CardPayment,transaction:CardTransaction)=>{
+  if(transaction.type!=="payment")return false;
+  const marker=paymentMarker(transaction.notes);
+  const note=String(payment.notes||"");
+  return sameCardId(payment.cardId,transaction.cardId)&&
+    ((marker&&note.includes(marker))||
+      Number(payment.id)+1===Number(transaction.id)||
+      (payment.date===cardTransactionDate(transaction)&&sameCents(payment.amount,transaction.amount)));
+};
+const removePaymentForTransaction=(items:CardPayment[],transaction:CardTransaction)=>{
+  if(transaction.type!=="payment")return items;
+  return items.filter(payment=>!paymentMatchesTransaction(payment,transaction));
+};
+const paymentsAppliedToStatement=(items:CardPayment[],statementId:number)=>items.reduce((total,payment)=>total+(payment.allocations??[]).filter(allocation=>String(allocation.statementId)===String(statementId)).reduce((sum,allocation)=>sum+Number(allocation.amount||0),0),0);
+const accountTransactionEffect=(transaction:AccountTransaction)=>{
+  if(transaction.type==="Income")return transaction.amount;
+  if(transaction.type==="Expense")return -transaction.amount;
+  const text=`${transaction.description} ${transaction.notes||""}`.toLowerCase();
+  if(text.includes("incoming transfer")||text.startsWith("transfer from"))return transaction.amount;
+  if(text.includes("outgoing transfer")||text.startsWith("transfer to")||text.includes("credit card payment"))return -transaction.amount;
+  return 0;
+};
+const rebuildGeneratedStatementsForCard=(card:CardConfig,nextTransactions:CardTransaction[],currentStatements:CardStatement[],nextPayments:CardPayment[],forceLedgerPayments=false)=>{
+  let previousUnpaid=0;
+  const cardStatements=currentStatements.filter(statement=>sameCardId(statement.cardId,card.id)).sort((a,b)=>a.statementDate.localeCompare(b.statementDate));
+  if(cardStatements[0])previousUnpaid=Number(cardStatements[0].previousBalance||0);
+  const rebuiltById=new Map<number,CardStatement>();
+  for(const statement of cardStatements){
+    if(statement.generatedAutomatically===false){
+      previousUnpaid=Math.max(0,Number(statement.remainingDue||0));
+      continue;
+    }
+    const statementDate=adjustToWeekday(statement.statementDate);
+    const cycleStart=statement.cycleStart||previousStatementDate(card.statementDay,statementDate);
+    const rebuilt=statementFromCycle(card,nextTransactions,cycleStart,statementDate,previousUnpaid,statement.id);
+    const ledgerPayments=paymentsAppliedToStatement(nextPayments,statement.id);
+    const paymentsApplied=forceLedgerPayments?ledgerPayments:Math.max(ledgerPayments,Number(statement.paymentsApplied||0));
+    const remainingDue=Math.max(0,rebuilt.statementBalance-paymentsApplied);
+    const status:StatementStatus=remainingDue<=0?"Paid":statement.status==="Overdue"?"Overdue":paymentsApplied>0?"Partially paid":"Closed";
+    const minimumDue=remainingDue>0?calculateMinimumDue(card,rebuilt.statementBalance):0;
+    const nextStatement={...rebuilt,paymentsApplied,remainingDue,status,minimumDue};
+    rebuiltById.set(statement.id,nextStatement);
+    previousUnpaid=remainingDue;
+  }
+  return currentStatements.map(statement=>rebuiltById.get(statement.id)??statement);
+};
+const normalizeCards=(items:CardConfig[]=[]):CardConfig[]=>{
+  const byIdentity=new Map<string,CardConfig>();
+  for(const rawCard of items){
+    const card={
+      ...rawCard,
+      includeInNetBalance:cardIsIncludedInNetWorth(rawCard),
+      excludeFromCashFlow:truthyFlag(rawCard.excludeFromCashFlow),
+    };
+    const fingerprint=`${String(card.bankId||card.bank||"").trim().toLowerCase()}|${String(card.name||"").trim().toLowerCase()}|${String(card.last4||"").trim()}`;
+    const idKey=`id:${String(card.id)}`;
+    const fingerprintKey=`card:${fingerprint}`;
+    const existing=byIdentity.get(idKey)||byIdentity.get(fingerprintKey);
+    if(existing){
+      const merged={...existing,...card};
+      byIdentity.set(`id:${String(existing.id)}`,merged);
+      byIdentity.set(idKey,merged);
+      byIdentity.set(fingerprintKey,merged);
+    }else{
+      byIdentity.set(idKey,card);
+      byIdentity.set(fingerprintKey,card);
+    }
+  }
+  return [...new Set(byIdentity.values())];
+};
 const cardsSeed: CardConfig[] = [
   {
     id: 1,
@@ -243,6 +387,9 @@ export default function CreditCardManagement({ onNotice }: Props) {
     [transactions, setTransactions] = useState<CardTransaction[]>(()=>loadWallet("pennywise.cardTransactions", [])),
     [statements, setStatements] = useState<CardStatement[]>(()=>loadWallet("pennywise.statements", [])),
     [payments, setPayments] = useState<CardPayment[]>(()=>loadWallet("pennywise.cardPayments", [])),
+    [deletedCardTransactionKeys,setDeletedCardTransactionKeys]=useState<string[]>(()=>loadWallet("pennywise.deletedCardTransactionKeys", [])),
+    [deletedCardPaymentKeys,setDeletedCardPaymentKeys]=useState<string[]>(()=>loadWallet("pennywise.deletedCardPaymentKeys", [])),
+    [deletedCardPaymentFingerprints,setDeletedCardPaymentFingerprints]=useState<string[]>(()=>loadWallet("pennywise.deletedCardPaymentFingerprints", [])),
     [accountView, setAccountView] = useState<"bank" | "credit">("bank"),
     [selectedAccountId, setSelectedAccountId] = useState(1),
     [selectedId, setSelectedId] = useState(1),
@@ -258,13 +405,68 @@ export default function CreditCardManagement({ onNotice }: Props) {
     [walletError,setWalletError]=useState(""),
     [logoColors,setLogoColors]=useState<Record<string,string>>({});
   const [installments, setInstallments] = useFirestoreState<Installment[]>("installments", []);
+  const [, setCashFlowIncome] = useFirestoreState<any[]>("income", []);
+  const [, setCashFlowPlanning] = useFirestoreState<any[]>("planning", []);
+  const [, setCashFlowPlannedPayments] = useFirestoreState<any[]>("plannedPayments", []);
+  const [cashFlowBills, setCashFlowBills] = useFirestoreState<any[]>("bills", []);
   const lastSyncedWallet=useRef("");
+  const pendingDeletedCardTransactionKeys=useRef<string[]>([]);
+  const pendingDeletedCardPaymentKeys=useRef<string[]>([]);
+  const pendingDeletedCardPaymentFingerprints=useRef<string[]>([]);
   const walletCarousel=useRef<HTMLDivElement>(null);
   const rememberLogoColor=(key:string,color:string)=>setLogoColors(current=>current[key]===color?current:{...current,[key]:color});
   const moveCarousel=(direction:-1|1)=>walletCarousel.current?.scrollBy({left:direction*292,behavior:"smooth"});
   const privatePeso=(value:number)=>hideNetWorth?maskedMoney:peso(value);
   const privateValue=(value:string)=>hideNetWorth?maskedMoney:value;
-  const applyNetWorthFilter=(value:NetWorthFilter)=>{setNetWorthFilter(value);if(value==="Assets"&&accounts.length){setAccountView("bank");setSelectedAccountId(accounts[0].id)}if(value==="Liabilities"){const card=cards.find(item=>item.active!==false&&cardIsIncludedInNetWorth(item));if(card){setAccountView("credit");setSelectedId(card.id)}}};
+  const syncTransactionToCashFlowPlan = (transaction: {
+    id: number;
+    type: "Income" | "Expense";
+    category: string;
+    amount: number;
+    date: string;
+    accountName: string;
+  }) => {
+    const syncPayload = {
+      category: transaction.category,
+      amount: transaction.amount,
+      date: transaction.date,
+      accountName: transaction.accountName,
+      kind: transaction.type,
+    };
+    if (transaction.type === "Income") {
+      const markReceived = (record: any) => ({
+        ...record,
+        status: "Received",
+        actualAmount: transaction.amount,
+        receivedAmount: transaction.amount,
+        actualDate: transaction.date,
+        receivedDate: transaction.date,
+        receivedOccurrenceDate: cashFlowRecordDate(record),
+        account: record.account || transaction.accountName,
+        accountName: record.accountName || transaction.accountName,
+        linkedTransactionId: transaction.id,
+      });
+      setCashFlowIncome((current) => current.map((record) => cashFlowRecordMatchesTransaction(record, syncPayload) ? markReceived(record) : record));
+      setCashFlowPlanning((current) => current.map((record) => cashFlowRecordMatchesTransaction(record, syncPayload) ? markReceived(record) : record));
+      return;
+    }
+    const markPaid = (record: any) => ({
+      ...record,
+      status: "Paid",
+      actualAmount: transaction.amount,
+      paidAmount: transaction.amount,
+      actualDate: transaction.date,
+      paymentDate: transaction.date,
+      paidOccurrenceDate: cashFlowRecordDate(record),
+      account: record.account || transaction.accountName,
+      accountName: record.accountName || transaction.accountName,
+      linkedTransactionId: transaction.id,
+    });
+    setCashFlowPlanning((current) => current.map((record) => cashFlowRecordMatchesTransaction(record, syncPayload) ? markPaid(record) : record));
+    setCashFlowPlannedPayments((current) => current.map((record) => cashFlowRecordMatchesTransaction(record, syncPayload) ? markPaid(record) : record));
+    setCashFlowBills((current) => current.map((record) => cashFlowRecordMatchesTransaction(record, syncPayload) ? markPaid(record) : record));
+  };
+  const applyNetWorthFilter=(value:NetWorthFilter)=>{setNetWorthFilter(value);if(value==="Assets"&&accounts.length){setAccountView("bank");setSelectedAccountId(accounts[0].id)}if(value==="Liabilities"){const card=cards.find(item=>item.active!==false);if(card){setAccountView("credit");setSelectedId(card.id)}}};
   const firestoreSafeWallet=(value:WalletCloudData)=>JSON.parse(JSON.stringify(value)) as WalletCloudData;
   const persistWalletNow=(next:WalletCloudData)=>{
     const user=firebaseAuth.currentUser;
@@ -278,12 +480,15 @@ export default function CreditCardManagement({ onNotice }: Props) {
   useEffect(()=>{localStorage.setItem("pennywise.cardTransactions",JSON.stringify(transactions))},[transactions]);
   useEffect(()=>{localStorage.setItem("pennywise.statements",JSON.stringify(statements))},[statements]);
   useEffect(()=>{localStorage.setItem("pennywise.cardPayments",JSON.stringify(payments))},[payments]);
+  useEffect(()=>{localStorage.setItem("pennywise.deletedCardTransactionKeys",JSON.stringify(deletedCardTransactionKeys))},[deletedCardTransactionKeys]);
+  useEffect(()=>{localStorage.setItem("pennywise.deletedCardPaymentKeys",JSON.stringify(deletedCardPaymentKeys))},[deletedCardPaymentKeys]);
+  useEffect(()=>{localStorage.setItem("pennywise.deletedCardPaymentFingerprints",JSON.stringify(deletedCardPaymentFingerprints))},[deletedCardPaymentFingerprints]);
   useEffect(()=>{localStorage.setItem("pennywise.hideNetWorth",String(hideNetWorth))},[hideNetWorth]);
   useEffect(()=>{
     if(!walletReady)return;
-    const snapshot:LocalWalletSnapshot={accounts,cards,accountTransactions,transactions,statements,payments,updatedAt:new Date().toISOString()};
+    const snapshot:LocalWalletSnapshot={accounts,cards,accountTransactions,transactions,statements,payments,deletedCardTransactionKeys,deletedCardPaymentKeys,deletedCardPaymentFingerprints,updatedAt:new Date().toISOString()};
     localStorage.setItem("pennywise.wallet.snapshot",JSON.stringify(snapshot));
-  },[walletReady,accounts,cards,accountTransactions,transactions,statements,payments]);
+  },[walletReady,accounts,cards,accountTransactions,transactions,statements,payments,deletedCardTransactionKeys,deletedCardPaymentKeys,deletedCardPaymentFingerprints]);
   useEffect(()=>{
     const user=firebaseAuth.currentUser;
     if(!user){setWalletError("Sign in again to synchronize your wallet.");setWalletReady(true);return;}
@@ -291,16 +496,25 @@ export default function CreditCardManagement({ onNotice }: Props) {
     return onSnapshot(walletRef,async snapshot=>{
       if(snapshot.exists()){
         const data=snapshot.data() as WalletCloudData&{updatedAt?:string};
-        const remote:WalletCloudData={accounts:data.accounts??[],cards:data.cards??[],accountTransactions:data.accountTransactions??[],transactions:data.transactions??[],statements:data.statements??[],payments:data.payments??[]},local=loadLocalWalletSnapshot(),localIsNewer=Boolean(local&&local.updatedAt>(data.updatedAt??""));
+        const remote:WalletCloudData={accounts:data.accounts??[],cards:data.cards??[],accountTransactions:data.accountTransactions??[],transactions:data.transactions??[],statements:data.statements??[],payments:data.payments??[],deletedCardTransactionKeys:data.deletedCardTransactionKeys??[],deletedCardPaymentKeys:data.deletedCardPaymentKeys??[],deletedCardPaymentFingerprints:data.deletedCardPaymentFingerprints??[]},local=loadLocalWalletSnapshot(),localIsNewer=Boolean(local&&local.updatedAt>(data.updatedAt??""));
         const mergedCards=[...(remote.cards??[])];
         if(localIsNewer)for(const localCard of local!.cards??[]){const index=mergedCards.findIndex(remoteCard=>remoteCard.id===localCard.id);if(index>=0)mergedCards[index]=localCard;else mergedCards.push(localCard)}
-        const normalized:WalletCloudData=localIsNewer?{accounts:local!.accounts??[],cards:normalizeCards(mergedCards),accountTransactions:local!.accountTransactions??[],transactions:local!.transactions??[],statements:local!.statements??[],payments:local!.payments??[]}:{...remote,cards:normalizeCards(remote.cards)};
-        const normalizedStatements=normalized.statements.map(statement=>{const card=normalized.cards.find(item=>item.id===statement.cardId),statementDate=adjustToWeekday(statement.statementDate),cycleStart=card?previousStatementDate(card.statementDay,statementDate):statement.cycleStart,cycleEnd=card?statementCutoffDate(statementDate):statement.cycleEnd;if(card&&statement.generatedAutomatically!==false){const rebuilt=statementFromCycle(card,normalized.transactions,cycleStart,statementDate,statement.previousBalance??0,statement.id),paymentsApplied=statement.paymentsApplied??rebuilt.paymentsApplied,remainingDue=Math.max(0,rebuilt.statementBalance-paymentsApplied);return{...rebuilt,paymentsApplied,remainingDue,status:remainingDue<=0?"Paid":statement.status}}return{...statement,statementDate,dueDate:adjustToWeekday(statement.dueDate),cycleStart,cycleEnd}});
-        lastSyncedWallet.current=JSON.stringify({...normalized,statements:normalizedStatements});
-        setAccounts(normalized.accounts);setCards(normalized.cards);setAccountTransactions(normalized.accountTransactions);setTransactions(normalized.transactions);setStatements(normalizedStatements);setPayments(normalized.payments);
-        if(localIsNewer)void setDoc(walletRef,{...firestoreSafeWallet(normalized),updatedAt:local!.updatedAt}).catch(()=>setWalletError("Saved on this device. Cloud synchronization is still pending."));
+        const mergedDeletedTransactionKeys=[...new Set([...(remote.deletedCardTransactionKeys??[]),...(local?.deletedCardTransactionKeys??[]),...pendingDeletedCardTransactionKeys.current])];
+        const mergedDeletedPaymentKeys=[...new Set([...(remote.deletedCardPaymentKeys??[]),...(local?.deletedCardPaymentKeys??[]),...pendingDeletedCardPaymentKeys.current])];
+        const mergedDeletedPaymentFingerprints=[...new Set([...(remote.deletedCardPaymentFingerprints??[]),...(local?.deletedCardPaymentFingerprints??[]),...pendingDeletedCardPaymentFingerprints.current])];
+        const normalized:WalletCloudData=localIsNewer?{accounts:local!.accounts??[],cards:normalizeCards(mergedCards),accountTransactions:local!.accountTransactions??[],transactions:local!.transactions??[],statements:local!.statements??[],payments:local!.payments??[],deletedCardTransactionKeys:mergedDeletedTransactionKeys,deletedCardPaymentKeys:mergedDeletedPaymentKeys,deletedCardPaymentFingerprints:mergedDeletedPaymentFingerprints}:{...remote,cards:normalizeCards(remote.cards),deletedCardTransactionKeys:mergedDeletedTransactionKeys,deletedCardPaymentKeys:mergedDeletedPaymentKeys,deletedCardPaymentFingerprints:mergedDeletedPaymentFingerprints};
+        const deletedTransactionKeys=new Set((normalized.deletedCardTransactionKeys??[]).map(String));
+        const deletedPaymentKeys=new Set((normalized.deletedCardPaymentKeys??[]).map(String));
+        const deletedPaymentFingerprints=new Set((normalized.deletedCardPaymentFingerprints??[]).map(String));
+        const filteredTransactions=normalized.transactions.filter(transaction=>!cardTransactionIsDeleted(transaction,deletedTransactionKeys)&&!cardTransactionPaymentFingerprintIsDeleted(transaction,deletedPaymentFingerprints));
+        const filteredPayments=normalized.payments.filter(payment=>!cardPaymentIsDeleted(payment,deletedPaymentKeys)&&!cardPaymentDisplayIsDeleted(payment,deletedTransactionKeys)&&!cardPaymentFingerprintIsDeleted(payment,deletedPaymentFingerprints));
+        const normalizedStatements=normalized.statements.map(statement=>{const card=normalized.cards.find(item=>String(item.id)===String(statement.cardId)),statementDate=adjustToWeekday(statement.statementDate),cycleStart=card?previousStatementDate(card.statementDay,statementDate):statement.cycleStart,cycleEnd=card?statementCutoffDate(statementDate):statement.cycleEnd;if(card&&statement.generatedAutomatically!==false){const rebuilt=statementFromCycle(card,filteredTransactions,cycleStart,statementDate,statement.previousBalance??0,statement.id),ledgerPayments=paymentsAppliedToStatement(filteredPayments,statement.id),paymentsApplied=deletedPaymentKeys.size?ledgerPayments:statement.paymentsApplied??rebuilt.paymentsApplied,remainingDue=Math.max(0,rebuilt.statementBalance-paymentsApplied);return{...rebuilt,paymentsApplied,remainingDue,status:remainingDue<=0?"Paid":statement.status}}return{...statement,statementDate,dueDate:ensureDueDateAfterStatement(statementDate,statement.dueDate),cycleStart,cycleEnd}});
+        const sanitized={...normalized,transactions:filteredTransactions,payments:filteredPayments,statements:normalizedStatements};
+        lastSyncedWallet.current=JSON.stringify(sanitized);
+        setAccounts(normalized.accounts);setCards(normalized.cards);setAccountTransactions(normalized.accountTransactions);setTransactions(filteredTransactions);setStatements(normalizedStatements);setPayments(filteredPayments);setDeletedCardTransactionKeys(normalized.deletedCardTransactionKeys??[]);setDeletedCardPaymentKeys(normalized.deletedCardPaymentKeys??[]);setDeletedCardPaymentFingerprints(normalized.deletedCardPaymentFingerprints??[]);
+        if(localIsNewer||filteredTransactions.length!==normalized.transactions.length||filteredPayments.length!==normalized.payments.length||mergedDeletedTransactionKeys.length!==(remote.deletedCardTransactionKeys??[]).length||mergedDeletedPaymentKeys.length!==(remote.deletedCardPaymentKeys??[]).length||mergedDeletedPaymentFingerprints.length!==(remote.deletedCardPaymentFingerprints??[]).length)void setDoc(walletRef,{...firestoreSafeWallet(sanitized),updatedAt:localIsNewer?local!.updatedAt:new Date().toISOString()}).catch(()=>setWalletError("Saved on this device. Cloud synchronization is still pending."));
       }else{
-        const local:WalletCloudData={accounts,cards,accountTransactions,transactions,statements,payments};
+        const local:WalletCloudData={accounts,cards,accountTransactions,transactions,statements,payments,deletedCardTransactionKeys,deletedCardPaymentKeys,deletedCardPaymentFingerprints};
         lastSyncedWallet.current=JSON.stringify(local);
         await setDoc(walletRef,{...firestoreSafeWallet(local),updatedAt:new Date().toISOString()});
       }
@@ -309,10 +523,15 @@ export default function CreditCardManagement({ onNotice }: Props) {
   },[]);
   useEffect(()=>{
     if(!walletReady||!firebaseAuth.currentUser)return;
-    const data:WalletCloudData={accounts,cards,accountTransactions,transactions,statements,payments},serialized=JSON.stringify(data);
+    const deletedTransactionKeys=new Set(deletedCardTransactionKeys.map(String));
+    const deletedPaymentKeys=new Set(deletedCardPaymentKeys.map(String));
+    const deletedPaymentFingerprints=new Set(deletedCardPaymentFingerprints.map(String));
+    const persistedTransactions=transactions.filter(transaction=>!cardTransactionIsDeleted(transaction,deletedTransactionKeys)&&!cardTransactionPaymentFingerprintIsDeleted(transaction,deletedPaymentFingerprints));
+    const persistedPayments=payments.filter(payment=>!cardPaymentIsDeleted(payment,deletedPaymentKeys)&&!cardPaymentDisplayIsDeleted(payment,deletedTransactionKeys)&&!cardPaymentFingerprintIsDeleted(payment,deletedPaymentFingerprints));
+    const data:WalletCloudData={accounts,cards,accountTransactions,transactions:persistedTransactions,statements,payments:persistedPayments,deletedCardTransactionKeys,deletedCardPaymentKeys,deletedCardPaymentFingerprints},serialized=JSON.stringify(data);
     if(serialized===lastSyncedWallet.current)return;
     void setDoc(doc(firestore,"users",firebaseAuth.currentUser.uid,"appData","wallet"),{...firestoreSafeWallet(data),updatedAt:new Date().toISOString()}).then(()=>{lastSyncedWallet.current=serialized;setWalletError("")}).catch(()=>setWalletError("Your latest change could not be synchronized. Please check your connection and try again."));
-  },[walletReady,accounts,cards,accountTransactions,transactions,statements,payments]);
+  },[walletReady,accounts,cards,accountTransactions,transactions,statements,payments,deletedCardTransactionKeys,deletedCardPaymentKeys,deletedCardPaymentFingerprints]);
   if(!walletReady)return <section className="feature-page credit-wallet"><article className="surface"><p className="empty-card">Loading your accounts and cards…</p></article></section>;
   const reservedForCard=(card:CardConfig)=>installments
     .filter(item=>item.type==="Credit-card installment"&&item.linkedCard===card.name&&!item.archived&&item.status!=="Completed")
@@ -334,7 +553,7 @@ export default function CreditCardManagement({ onNotice }: Props) {
   const totalCardLiabilities=includedLiabilityCards.reduce((sum,card)=>sum+Math.max(0,computeCard(card,transactions,statements,payments,todayIso,reservedForCard(card)).currentBalance),0);
   const totalInstallmentLiabilities=installments.filter(item=>!item.archived&&item.status!=="Completed"&&!installmentBelongsToExcludedCard(item)).reduce((sum,item)=>sum+Math.max(0,Number(item.remainingPayable||0)),0);
   const totalLiabilities=totalCardLiabilities+totalInstallmentLiabilities,netWorth=totalAssets-totalLiabilities;
-  const visibleAccounts=netWorthFilter==="Liabilities"?[]:accounts,visibleCards=netWorthFilter==="Assets"?[]:netWorthFilter==="Liabilities"?includedLiabilityCards:activeCards;
+  const visibleAccounts=netWorthFilter==="Liabilities"?[]:accounts,visibleCards=netWorthFilter==="Assets"?[]:activeCards;
   const effectiveAccountView=netWorthFilter==="Assets"?"bank":netWorthFilter==="Liabilities"?"credit":accountView;
   const selectedAccount = visibleAccounts.find((account) => account.id === selectedAccountId) ?? visibleAccounts[0] ?? emptyAccount,
     selected = visibleCards.find((c) => c.id === selectedId) ?? visibleCards[0] ?? emptyCard;
@@ -345,16 +564,15 @@ export default function CreditCardManagement({ onNotice }: Props) {
     sharedLimitCards=cards.filter(card=>card.active&&(card.id===sharedLimitRootId||card.sharedLimitCardId===sharedLimitRootId)),
     effectiveCreditLimit=sharedLimitOwner.creditLimit,
     effectiveAvailableCredit=selected.sharedLimitCardId||sharedLimitCards.length>1
-      ? Math.max(0,effectiveCreditLimit-sharedLimitCards.reduce((total,card)=>total+Math.max(0,computeCard(card,transactions,statements,payments).currentBalance)+reservedForCard(card),0))
+      ? Math.max(0,effectiveCreditLimit-sharedLimitCards.reduce((total,card)=>total+Math.max(0,computeCard(card,transactions,statements,payments,todayIso).currentBalance)+reservedForCard(card),0))
       : computed.availableCredit;
   const accountStatementRows=[...selectedAccountTransactions].sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id),
-    transactionEffect=(transaction:AccountTransaction)=>transaction.type==="Income"?transaction.amount:transaction.type==="Expense"?-transaction.amount:0,
     totalCredits=accountStatementRows.filter(transaction=>transaction.type==="Income").reduce((sum,transaction)=>sum+transaction.amount,0),
     totalDebits=accountStatementRows.filter(transaction=>transaction.type==="Expense").reduce((sum,transaction)=>sum+transaction.amount,0),
-    openingAccountBalance=selectedAccount.balance-accountStatementRows.reduce((sum,transaction)=>sum+transactionEffect(transaction),0);
+    openingAccountBalance=selectedAccount.balance-accountStatementRows.reduce((sum,transaction)=>sum+accountTransactionEffect(transaction),0);
   let runningAccountBalance=openingAccountBalance;
   const accountStatementBalances=new Map<number,number>();
-  accountStatementRows.forEach(transaction=>{runningAccountBalance+=transactionEffect(transaction);accountStatementBalances.set(transaction.id,runningAccountBalance)});
+  accountStatementRows.forEach(transaction=>{runningAccountBalance+=accountTransactionEffect(transaction);accountStatementBalances.set(transaction.id,runningAccountBalance)});
   const averageDailyBalance=accountStatementRows.length?accountStatementRows.reduce((sum,transaction)=>sum+(accountStatementBalances.get(transaction.id)??0),0)/accountStatementRows.length:selectedAccount.balance,
     accountStatementPeriod=accountStatementRows.length?`${pretty(accountStatementRows[0].date)} – ${pretty(accountStatementRows[accountStatementRows.length-1].date)}`:"No activity yet";
   const accountPeriodMap=new Map<string,AccountTransaction[]>();
@@ -363,8 +581,8 @@ export default function CreditCardManagement({ onNotice }: Props) {
   const displayedStatementDate=adjustToWeekday(computed.lastStatement?.statementDate??computed.currentCycleStart),
     displayedCycleEnd=computed.lastStatement?.cycleEnd??statementCutoffDate(displayedStatementDate),
     displayedCycleStart=computed.lastStatement?.cycleStart??previousStatementDate(selected.statementDay,displayedStatementDate),
-    displayedDueDate=adjustToWeekday(computed.lastStatement?.dueDate??calculateDueDate(selected,displayedStatementDate)),
-    paymentsAfterStatement=payments.filter(payment=>payment.cardId===selected.id&&payment.status==="Posted"&&payment.date>displayedStatementDate).reduce((total,payment)=>total+payment.amount,0);
+    displayedDueDate=ensureDueDateAfterStatement(displayedStatementDate,computed.lastStatement?.dueDate??calculateDueDate(selected,displayedStatementDate)),
+    paymentsAfterStatement=payments.filter(payment=>String(payment.cardId)===String(selected.id)&&payment.status.toLowerCase()==="posted"&&payment.date>displayedStatementDate).reduce((total,payment)=>total+payment.amount,0);
   const transferEndpoints: TransferEndpoint[] = [
     ...accounts.map((account) => ({
       key: `account:${account.id}`,
@@ -390,6 +608,7 @@ export default function CreditCardManagement({ onNotice }: Props) {
     if (!Number.isFinite(amount) || amount <= 0) { onNotice("Enter a valid transfer amount."); return; }
 
     const baseId = Date.now();
+    const transferMarker = to.kind === "card" ? `card-payment:${baseId + 3}` : "";
     if (from.kind === "account" || to.kind === "account") {
       setAccounts((current) => current.map((account) => {
         if (from.kind === "account" && account.id === from.id) return { ...account, balance: Number(account.balance || 0) - amount };
@@ -397,7 +616,7 @@ export default function CreditCardManagement({ onNotice }: Props) {
         return account;
       }));
       const accountEntries: AccountTransaction[] = [];
-      if (from.kind === "account") accountEntries.push({ id: baseId, accountId: from.id, date, description: `Transfer to ${to.name}`, type: "Transfer", category: "Transfer", amount, status: "Posted", notes: `Outgoing transfer${notes ? ` · ${notes}` : ""}` });
+      if (from.kind === "account") accountEntries.push({ id: baseId, accountId: from.id, date, description: to.kind === "card" ? `Credit card payment to ${to.name}` : `Transfer to ${to.name}`, type: "Transfer", category: to.kind === "card" ? "Credit Card Payment" : "Transfer", amount, status: "Posted", notes: `${transferMarker ? `${transferMarker} · ` : ""}Outgoing transfer${notes ? ` · ${notes}` : ""}` });
       if (to.kind === "account") accountEntries.push({ id: baseId + 1, accountId: to.id, date, description: `Transfer from ${from.name}`, type: "Transfer", category: "Transfer", amount, status: "Posted", notes: `Incoming transfer${notes ? ` · ${notes}` : ""}` });
       if (accountEntries.length) setAccountTransactions((current) => [...accountEntries, ...current]);
     }
@@ -406,7 +625,13 @@ export default function CreditCardManagement({ onNotice }: Props) {
       setTransactions((current) => [{ id: baseId + 2, cardId: from.id, type: "adjustment", description: `Transfer to ${to.name}`, category: "Transfer", amount, transactionDate: date, postedDate: date, status: "posted", notes: `Outgoing transfer${notes ? ` · ${notes}` : ""}`, expenseCounted: false }, ...current]);
     }
     if (to.kind === "card") {
-      setPayments((current) => [{ id: baseId + 3, cardId: to.id, account: from.name, date, amount, option: "Transfer payment", status: "Posted", notes: `Transfer from ${from.name}${notes ? ` · ${notes}` : ""}`, allocations: [{ cycle: "current-cycle", amount, date }] }, ...current]);
+      const targetCard=cards.find(card=>sameCardId(card.id,to.id));
+      const targetComputed=targetCard?computeCard(targetCard,transactions,statements,payments,todayIso,reservedForCard(targetCard)):computed;
+      const result=targetCard?applyPayment(statements.filter(statement=>sameCardId(statement.cardId,targetCard.id)),amount,date,Math.max(0,targetComputed.thisStatementSoFar)):null;
+      const paymentNotes=`${transferMarker} · Transfer from ${from.name}${notes ? ` · ${notes}` : ""}`;
+      if(result)setStatements(current=>current.map(statement=>result.statements.find(item=>sameCardId(item.id,statement.id))??statement));
+      setPayments((current) => [{ id: baseId + 3, cardId: to.id, account: from.name, date, amount, option: "Transfer payment", status: "Posted", notes: paymentNotes, allocations: result?.allocations??[{ cycle: "current-cycle", amount, date }] }, ...current]);
+      setTransactions((current)=>[{id:baseId+4,cardId:to.id,type:"payment",description:`Payment from ${from.name}`,category:"Credit Card Payment",amount,transactionDate:date,postedDate:date,status:"posted",notes:paymentNotes,expenseCounted:false},...current]);
     }
 
     setModal(null);
@@ -419,6 +644,11 @@ export default function CreditCardManagement({ onNotice }: Props) {
     option: string,
     notes: string,
   ) => {
+    const sourceAccount=accounts.find(item=>item.name===account);
+    if(!sourceAccount){onNotice("Select a valid bank account to pay this card.");return;}
+    if(!Number.isFinite(amount)||amount<=0){onNotice("Enter a valid payment amount.");return;}
+    const paymentId=Date.now();
+    const marker=`card-payment:${paymentId}`;
     const result = applyPayment(
       statements.filter((s) => s.cardId === selected.id),
       amount,
@@ -431,25 +661,210 @@ export default function CreditCardManagement({ onNotice }: Props) {
     setPayments((current) => [
       ...current,
       {
-        id: Date.now(),
+        id: paymentId,
         cardId: selected.id,
         account,
         date,
         amount,
         option,
         status: "Posted",
-        notes,
+        notes: `${marker} · ${notes || `Credit card payment from ${sourceAccount.name}`}`,
         allocations: result.allocations,
       },
     ]);
+    setAccounts((current)=>current.map(item=>item.id===sourceAccount.id?{...item,balance:Number(item.balance||0)-amount}:item));
+    setAccountTransactions((current)=>[{
+      id: paymentId+2,
+      accountId: sourceAccount.id,
+      date,
+      description: `Credit card payment to ${selected.name}`,
+      type: "Transfer",
+      category: "Credit Card Payment",
+      amount,
+      status: "Posted",
+      notes: `${marker} · Outgoing transfer${notes ? ` · ${notes}` : ""}`,
+    },...current]);
+    setTransactions((current)=>[{
+      id: paymentId+1,
+      cardId: selected.id,
+      type: "payment",
+      description: `Payment from ${sourceAccount.name}`,
+      category: "Credit Card Payment",
+      amount,
+      transactionDate: date,
+      postedDate: date,
+      status: "posted",
+      notes: `${marker} · Credit card payment from ${sourceAccount.name}${notes ? ` · ${notes}` : ""}`,
+      expenseCounted: false,
+    },...current]);
     setModal(null);
     onNotice(
       `${peso(amount)} payment posted · ${result.allocations.length} allocation${result.allocations.length === 1 ? "" : "s"}`,
     );
   };
+  const updateCardTransaction=(updated:CardTransaction)=>{
+    const original=transactions.find(transaction=>transaction.id===updated.id);
+    const marker=paymentMarker(original?.notes);
+    const linkedUpdated=marker&&!String(updated.notes||"").includes(marker)?{...updated,notes:`${marker} · ${updated.notes||""}`.trim()}:updated;
+    const nextTransactions=transactions.map(transaction=>transaction.id===linkedUpdated.id?linkedUpdated:transaction);
+    const card=cards.find(item=>sameCardId(item.id,linkedUpdated.cardId))??selected;
+    let nextPayments=payments;
+    if(original?.type==="payment"){
+      const date=cardTransactionDate(linkedUpdated);
+      nextPayments=payments.map(payment=>paymentMatchesTransaction(payment,original)?{...payment,date,amount:linkedUpdated.amount,notes:marker&&String(payment.notes||"").includes(marker)?payment.notes:`${marker ? `${marker} · ` : ""}${payment.notes||""}`.trim()}:payment);
+      if(marker){
+        const linkedAccountTransactions=accountTransactions.filter(entry=>String(entry.notes||"").includes(marker));
+        if(linkedAccountTransactions.length){
+          const adjustedAccounts=new Map<number,number>();
+          const nextAccountTransactions=accountTransactions.map(entry=>{
+            if(!String(entry.notes||"").includes(marker))return entry;
+            const beforeEffect=accountTransactionEffect(entry);
+            const afterEntry={...entry,date,amount:linkedUpdated.amount,description:`Credit card payment to ${card.name}`,category:"Credit Card Payment",type:"Transfer" as const,notes:String(entry.notes||"").includes(marker)?entry.notes:`${marker} · ${entry.notes||""}`.trim()};
+            const afterEffect=accountTransactionEffect(afterEntry);
+            adjustedAccounts.set(entry.accountId,(adjustedAccounts.get(entry.accountId)??0)-beforeEffect+afterEffect);
+            return afterEntry;
+          });
+          setAccountTransactions(nextAccountTransactions);
+          if(adjustedAccounts.size)setAccounts(current=>current.map(account=>adjustedAccounts.has(account.id)?{...account,balance:Number(account.balance||0)+Number(adjustedAccounts.get(account.id)||0)}:account));
+        }
+      }
+    }
+    setTransactions(nextTransactions);
+    if(nextPayments!==payments)setPayments(nextPayments);
+    setStatements(current=>rebuildGeneratedStatementsForCard(card,nextTransactions,current,nextPayments,original?.type==="payment"||linkedUpdated.type==="payment"));
+    setModal(null);
+    onNotice(`${linkedUpdated.description} updated`);
+  };
+  const deleteCardTransaction=(transaction:CardTransaction)=>{
+    const marker=paymentMarker(transaction.notes);
+    const deleteKeys=cardTransactionDeleteKeys(transaction);
+    const matchedPayments=transaction.type==="payment"?payments.filter(payment=>paymentMatchesTransaction(payment,transaction)):[];
+    const matchedPaymentKeys=matchedPayments.flatMap(cardPaymentDeleteKeys);
+    const card=cards.find(item=>sameCardId(item.id,transaction.cardId))??selected;
+    const transactionDate=cardTransactionDate(transaction);
+    const transactionAmount=Number(transaction.amount||0);
+    const matchingAccountTransfers=transaction.type==="payment"?accountTransactions.filter(entry=>{
+      const entryText=`${entry.description} ${entry.category} ${entry.notes||""}`.toLowerCase();
+      return entry.date===transactionDate&&sameCents(entry.amount,transactionAmount)&&
+        (entryText.includes(String(card.name||"").toLowerCase())||
+          Boolean(paymentMarker(entry.notes))&&matchedPaymentKeys.includes(paymentMarker(entry.notes))||
+          (marker&&String(entry.notes||"").includes(marker)));
+    }):[];
+    const relatedMarkers=[
+      marker,
+      ...matchedPaymentKeys.filter(key=>/^bill-payment:|^card-payment:/.test(key)),
+      ...matchingAccountTransfers.map(entry=>paymentMarker(entry.notes)),
+    ].filter(Boolean);
+    const relatedBillPaymentKeys=transaction.type==="payment"?cashFlowBills.flatMap(bill=>{
+      if(!/^credit-card-statement:[^:]+:/.test(String(bill.sourceKey??"")))return [];
+      const source=String(bill.sourceKey??"").match(/^credit-card-statement:([^:]+):/);
+      if(!source||!sameCardId(source[1],transaction.cardId))return [];
+      const records=Array.isArray(bill.paymentHistory)?bill.paymentHistory:[];
+      return records.filter((record:any)=>String(record.paymentDate??bill.lastPaymentDate??bill.dueDate)===transactionDate&&sameCents(record.amount??bill.lastPaymentAmount??bill.actualAmount??bill.amount,transactionAmount)).map((record:any)=>String(record.id??`bill-payment:${bill.id}:${bill.dueDate}:${record.paymentDate??transactionDate}`));
+    }):[];
+    const paymentFingerprints=transaction.type==="payment"
+      ? [...new Set([cardTransactionPaymentFingerprint(transaction),...matchedPayments.map(cardPaymentFingerprint)])]
+      : [];
+    const nextDeletedTransactionKeys=[...new Set([...deletedCardTransactionKeys,...deleteKeys,...relatedMarkers,...relatedBillPaymentKeys])];
+    const nextDeletedPaymentKeys=[...new Set([...deletedCardPaymentKeys,...relatedMarkers,...matchedPaymentKeys,...relatedBillPaymentKeys])];
+    const nextDeletedPaymentFingerprints=[...new Set([...deletedCardPaymentFingerprints,...paymentFingerprints])];
+    pendingDeletedCardTransactionKeys.current=nextDeletedTransactionKeys;
+    pendingDeletedCardPaymentKeys.current=nextDeletedPaymentKeys;
+    pendingDeletedCardPaymentFingerprints.current=nextDeletedPaymentFingerprints;
+    setDeletedCardTransactionKeys(nextDeletedTransactionKeys);
+    if(relatedMarkers.length||matchedPaymentKeys.length||relatedBillPaymentKeys.length)setDeletedCardPaymentKeys(nextDeletedPaymentKeys);
+    if(paymentFingerprints.length)setDeletedCardPaymentFingerprints(nextDeletedPaymentFingerprints);
+    const nextTransactions=transactions.filter(item=>item.id!==transaction.id&&!deleteKeys.some(key=>cardTransactionDeleteKeys(item).includes(key))&&!cardTransactionPaymentFingerprintIsDeleted(item,nextDeletedPaymentFingerprints));
+    const nextPayments=removePaymentForTransaction(payments,transaction).filter(payment=>!cardPaymentFingerprintIsDeleted(payment,nextDeletedPaymentFingerprints));
+    let nextAccountTransactions=accountTransactions;
+    let nextAccounts=accounts;
+    if(relatedMarkers.length||matchingAccountTransfers.length){
+      const linkedAccountTransactions=accountTransactions.filter(entry=>matchingAccountTransfers.some(match=>match.id===entry.id)||relatedMarkers.some(key=>String(entry.notes||"").includes(key)));
+      if(linkedAccountTransactions.length){
+        nextAccountTransactions=accountTransactions.filter(entry=>!linkedAccountTransactions.some(match=>match.id===entry.id));
+        const accountAdjustments=new Map<number,number>();
+        linkedAccountTransactions.forEach(entry=>accountAdjustments.set(entry.accountId,(accountAdjustments.get(entry.accountId)??0)-accountTransactionEffect(entry)));
+        nextAccounts=accounts.map(account=>accountAdjustments.has(account.id)?{...account,balance:Number(account.balance||0)+Number(accountAdjustments.get(account.id)||0)}:account);
+        setAccountTransactions(nextAccountTransactions);
+        setAccounts(nextAccounts);
+      }
+    }
+    if(transaction.type==="payment"&&(relatedBillPaymentKeys.length||relatedMarkers.length)){
+      setCashFlowBills(current=>current.map(bill=>{
+        if(!/^credit-card-statement:[^:]+:/.test(String(bill.sourceKey??"")))return bill;
+        const source=String(bill.sourceKey??"").match(/^credit-card-statement:([^:]+):/);
+        if(!source||!sameCardId(source[1],transaction.cardId))return bill;
+        const paymentHistory=Array.isArray(bill.paymentHistory)?bill.paymentHistory.filter((record:any)=>{
+          const recordId=String(record.id??`bill-payment:${bill.id}:${bill.dueDate}:${record.paymentDate??transactionDate}`);
+          const recordMatches=String(record.paymentDate??bill.lastPaymentDate??bill.dueDate)===transactionDate&&sameCents(record.amount??bill.lastPaymentAmount??bill.actualAmount??bill.amount,transactionAmount);
+          return !relatedBillPaymentKeys.includes(recordId)&&!relatedMarkers.includes(recordId)&&!recordMatches;
+        }):bill.paymentHistory;
+        const hasHistory=Array.isArray(paymentHistory)&&paymentHistory.length>0;
+        return hasHistory?{...bill,paymentHistory}:{...bill,status:"Upcoming",paymentHistory:[],actualAmount:undefined,paidAmount:undefined,actualDate:undefined,paymentDate:undefined,paidOccurrenceDate:undefined,lastPaymentDate:undefined,lastPaymentAmount:undefined,lastPaymentMethod:undefined,paymentTransactionId:undefined};
+      }));
+    }
+    const nextStatements=rebuildGeneratedStatementsForCard(card,nextTransactions,statements,nextPayments,transaction.type==="payment");
+    setTransactions(nextTransactions);
+    if(nextPayments!==payments)setPayments(nextPayments);
+    setStatements(nextStatements);
+    const localSnapshot:LocalWalletSnapshot={accounts:nextAccounts,cards,accountTransactions:nextAccountTransactions,transactions:nextTransactions,statements:nextStatements,payments:nextPayments,deletedCardTransactionKeys:nextDeletedTransactionKeys,deletedCardPaymentKeys:nextDeletedPaymentKeys,deletedCardPaymentFingerprints:nextDeletedPaymentFingerprints,updatedAt:new Date().toISOString()};
+    localStorage.setItem("pennywise.cardTransactions",JSON.stringify(nextTransactions));
+    localStorage.setItem("pennywise.cardPayments",JSON.stringify(localSnapshot.payments));
+    localStorage.setItem("pennywise.statements",JSON.stringify(nextStatements));
+    localStorage.setItem("pennywise.deletedCardTransactionKeys",JSON.stringify(nextDeletedTransactionKeys));
+    localStorage.setItem("pennywise.deletedCardPaymentKeys",JSON.stringify(nextDeletedPaymentKeys));
+    localStorage.setItem("pennywise.deletedCardPaymentFingerprints",JSON.stringify(nextDeletedPaymentFingerprints));
+    localStorage.setItem("pennywise.wallet.snapshot",JSON.stringify(localSnapshot));
+    void persistWalletNow(localSnapshot).catch(()=>undefined);
+    setModal(null);
+    onNotice(`${transaction.description} deleted`);
+  };
+  const updateLinkedCardPaymentForAccountTransaction=(original:AccountTransaction,updated:AccountTransaction)=>{
+    const marker=paymentMarker(original.notes);
+    if(!marker)return;
+    const linkedTransaction=transactions.find(transaction=>String(transaction.notes||"").includes(marker)&&transaction.type==="payment");
+    const linkedPayment=payments.find(payment=>String(payment.notes||"").includes(marker));
+    const cardId=linkedTransaction?.cardId??linkedPayment?.cardId;
+    const card=cards.find(item=>sameCardId(item.id,cardId));
+    if(!card)return;
+    const nextTransactions=transactions.map(transaction=>String(transaction.notes||"").includes(marker)&&transaction.type==="payment"?{...transaction,amount:updated.amount,transactionDate:updated.date,postedDate:updated.date,description:`Payment from ${selectedAccount.name}`,notes:String(transaction.notes||"").includes(marker)?transaction.notes:`${marker} · ${transaction.notes||""}`.trim()}:transaction);
+    const nextPayments=payments.map(payment=>String(payment.notes||"").includes(marker)?{...payment,amount:updated.amount,date:updated.date,account:selectedAccount.name,notes:String(payment.notes||"").includes(marker)?payment.notes:`${marker} · ${payment.notes||""}`.trim()}:payment);
+    setTransactions(nextTransactions);
+    setPayments(nextPayments);
+    setStatements(current=>rebuildGeneratedStatementsForCard(card,nextTransactions,current,nextPayments,true));
+  };
+  const removeLinkedCardPaymentForAccountTransaction=(transaction:AccountTransaction)=>{
+    const marker=paymentMarker(transaction.notes);
+    if(!marker)return;
+    const linkedTransaction=transactions.find(item=>String(item.notes||"").includes(marker)&&item.type==="payment");
+    const linkedPayment=payments.find(item=>String(item.notes||"").includes(marker));
+    const cardId=linkedTransaction?.cardId??linkedPayment?.cardId;
+    const card=cards.find(item=>sameCardId(item.id,cardId));
+    setDeletedCardTransactionKeys(current=>current.includes(marker)?current:[...current,marker]);
+    setDeletedCardPaymentKeys(current=>current.includes(marker)?current:[...current,marker]);
+    const nextTransactions=transactions.filter(item=>!String(item.notes||"").includes(marker));
+    const nextPayments=payments.filter(item=>!String(item.notes||"").includes(marker));
+    setTransactions(nextTransactions);
+    setPayments(nextPayments);
+    if(card)setStatements(current=>rebuildGeneratedStatementsForCard(card,nextTransactions,current,nextPayments,true));
+  };
   const saveTransaction = (txn: CardTransaction | CardTransaction[]) => {
     const entries = Array.isArray(txn) ? txn : [txn];
-    setTransactions((current) => [...current, ...entries]);
+    const nextTransactions=[...transactions,...entries];
+    setTransactions(nextTransactions);
+    setStatements(current=>rebuildGeneratedStatementsForCard(selected,nextTransactions,current,payments));
+    entries
+      .filter((entry) => entry.status === "posted" && ["purchase", "installment", "fee", "interest"].includes(entry.type))
+      .forEach((entry) =>
+        syncTransactionToCashFlowPlan({
+          id: entry.id,
+          type: "Expense",
+          category: entry.category,
+          amount: entry.amount,
+          date: entry.transactionDate || entry.postedDate,
+          accountName: selected.name,
+        }),
+      );
     setModal(null);
     onNotice(
       `${entries.length} ${entries.length === 1 ? "transaction" : "installment charges"} added to ${selected.name}`,
@@ -459,7 +874,7 @@ export default function CreditCardManagement({ onNotice }: Props) {
     const nextCards=[...cards,card];
     setCards(nextCards);
     setSelectedId(card.id);
-    const localSnapshot:LocalWalletSnapshot={accounts,cards:nextCards,accountTransactions,transactions,statements,payments,updatedAt:new Date().toISOString()};
+    const localSnapshot:LocalWalletSnapshot={accounts,cards:nextCards,accountTransactions,transactions,statements,payments,deletedCardTransactionKeys,deletedCardPaymentKeys,updatedAt:new Date().toISOString()};
     localStorage.setItem("pennywise.wallet.snapshot",JSON.stringify(localSnapshot));
     setModal(null);onNotice(`${card.name} added and saved`);
     void persistWalletNow(localSnapshot).catch(()=>{});
@@ -467,7 +882,7 @@ export default function CreditCardManagement({ onNotice }: Props) {
   const updateCard = (card: CardConfig) => {
     const nextCards=cards.map((item) => item.id === card.id ? card : item);
     setCards(nextCards);
-    const localSnapshot:LocalWalletSnapshot={accounts,cards:nextCards,accountTransactions,transactions,statements,payments,updatedAt:new Date().toISOString()};
+    const localSnapshot:LocalWalletSnapshot={accounts,cards:nextCards,accountTransactions,transactions,statements,payments,deletedCardTransactionKeys,deletedCardPaymentKeys,updatedAt:new Date().toISOString()};
     localStorage.setItem("pennywise.wallet.snapshot",JSON.stringify(localSnapshot));
     setModal(null);onNotice(`${card.name} updated and saved`);
     void persistWalletNow(localSnapshot).catch(()=>{});
@@ -475,23 +890,54 @@ export default function CreditCardManagement({ onNotice }: Props) {
   const archiveCard = (card: CardConfig) => {
     const nextCards=cards.map(item=>item.id===card.id?{...item,active:false}:item),next=nextCards.find(item=>item.id!==card.id&&item.active);
     setCards(nextCards);if(next)setSelectedId(next.id);
-    const localSnapshot:LocalWalletSnapshot={accounts,cards:nextCards,accountTransactions,transactions,statements,payments,updatedAt:new Date().toISOString()};
+    const localSnapshot:LocalWalletSnapshot={accounts,cards:nextCards,accountTransactions,transactions,statements,payments,deletedCardTransactionKeys,deletedCardPaymentKeys,updatedAt:new Date().toISOString()};
     localStorage.setItem("pennywise.wallet.snapshot",JSON.stringify(localSnapshot));
     setModal(null);onNotice(`${card.name} archived`);
     void persistWalletNow(localSnapshot).catch(()=>{});
   };
   const visibleTransactions = transactions.filter(
     (t) =>
-      t.cardId === selected.id &&
+      String(t.cardId) === String(selected.id) &&
       (filter === "All" || t.type === filter.toLowerCase().replace("s", "")),
   );
   const closedStatementTransactions = visibleTransactions.filter((transaction) => transaction.postedDate >= displayedCycleStart && transaction.postedDate <= displayedCycleEnd);
   const transactionCycles = groupTransactionsByBillingCycle(selected, visibleTransactions, computed.currentCycleStart, statementCutoffDate(computed.nextStatementDate), computed.lastStatement);
   const displayedCycle=transactionCycles.find(cycle=>cycle.start===displayedCycleStart&&cycle.end===displayedCycleEnd),displayedCycleTransactions=displayedCycle?.transactions??closedStatementTransactions;
   const cycleSum=(type:CardTransaction["type"])=>displayedCycleTransactions.filter(transaction=>transaction.type===type).reduce((sum,transaction)=>sum+transaction.amount,0),cyclePurchases=cycleSum("purchase"),cycleInstallments=cycleSum("installment"),cycleFees=cycleSum("fee"),cycleInterest=cycleSum("interest"),cycleRefunds=cycleSum("refund"),cycleCredits=cycleSum("credit"),cyclePayments=cycleSum("payment"),cycleNet=cyclePurchases+cycleInstallments+cycleFees+cycleInterest-cycleRefunds-cycleCredits-cyclePayments;
-  const displayedStatementBalance=computed.lastStatement?.statementBalance??Math.max(0,cyclePurchases+cycleInstallments+cycleFees+cycleInterest-cycleRefunds-cycleCredits-cyclePayments),
+  const displayedStatementBalance=Math.max(0,Number(computed.lastStatement?.statementBalance??Math.max(0,cyclePurchases+cycleInstallments+cycleFees+cycleInterest-cycleRefunds-cycleCredits-cyclePayments))),
     displayedPaymentStatus=computed.lastStatement?computed.paymentStatus:displayedStatementBalance>0?"Upcoming":"No payment due";
-  const statementForViewing:CardStatement=computed.lastStatement??{id:0,cardId:selected.id,cycleStart:displayedCycle?.start??displayedCycleStart,cycleEnd:displayedCycle?.end??displayedCycleEnd,statementDate:displayedStatementDate,dueDate:displayedDueDate,previousBalance:Math.max(0,displayedStatementBalance-cycleNet),purchases:cyclePurchases,installments:cycleInstallments,fees:cycleFees,interest:cycleInterest,paymentsBeforeClose:cyclePayments,refunds:cycleRefunds,credits:cycleCredits,statementBalance:displayedStatementBalance,minimumDue:Math.min(displayedStatementBalance,selected.minimumFixed||displayedStatementBalance),remainingDue:Math.max(0,displayedStatementBalance-paymentsAfterStatement),paymentsApplied:paymentsAfterStatement,status:displayedStatementBalance-paymentsAfterStatement<=0?"Paid":paymentsAfterStatement>0?"Partially paid":"Closed",generatedAutomatically:true};
+  const statementForViewing:CardStatement=computed.lastStatement??{id:0,cardId:selected.id,cycleStart:displayedCycle?.start??displayedCycleStart,cycleEnd:displayedCycle?.end??displayedCycleEnd,statementDate:displayedStatementDate,dueDate:displayedDueDate,previousBalance:Math.max(0,displayedStatementBalance-cycleNet),purchases:cyclePurchases,installments:cycleInstallments,fees:cycleFees,interest:cycleInterest,paymentsBeforeClose:cyclePayments,refunds:cycleRefunds,credits:cycleCredits,statementBalance:displayedStatementBalance,minimumDue:calculateMinimumDue(selected,displayedStatementBalance),remainingDue:Math.max(0,displayedStatementBalance-paymentsAfterStatement),paymentsApplied:paymentsAfterStatement,status:displayedStatementBalance-paymentsAfterStatement<=0?"Paid":paymentsAfterStatement>0?"Partially paid":"Closed",generatedAutomatically:true};
+  const displayedMinimumDue=displayedStatementBalance>0&&Number(statementForViewing.minimumDue||0)<=0
+    ? calculateMinimumDue(selected,displayedStatementBalance)
+    : Number(statementForViewing.minimumDue||0);
+  const balanceTrendData:BalanceTrendPoint[]=statements
+    .filter(statement=>statement.cardId===selected.id)
+    .sort((a,b)=>a.statementDate.localeCompare(b.statementDate))
+    .slice(-6)
+    .map(statement=>({
+      id:String(statement.id),
+      period:new Date(`${statement.statementDate}T12:00:00`).toLocaleDateString("en-US",{month:"short"}),
+      range:`${pretty(statement.cycleStart)} – ${pretty(statement.cycleEnd)}`,
+      currentBalance:Math.max(0,Number(statement.remainingDue??statement.statementBalance??0)),
+      statementBalance:Math.max(0,Number(statement.statementBalance??0)),
+      creditLimit:effectiveCreditLimit,
+    }));
+  const cardSummaries=activeCards.map(card=>({card,summary:computeCard(card,transactions,statements,payments,todayIso,reservedForCard(card))}));
+  const totalCreditUsed=cardSummaries.reduce((sum,item)=>sum+Math.max(0,item.summary.currentBalance),0);
+  const totalAvailableCredit=cardSummaries.reduce((sum,item)=>sum+Math.max(0,item.summary.availableCredit),0);
+  const daysUntilDue=Math.max(0,Math.ceil((new Date(displayedDueDate).getTime()-new Date(todayIso).getTime())/86400000));
+  const upcomingDue30=cardSummaries.reduce((sum,item)=>{
+    const dueDate=item.summary.lastStatement?.dueDate??calculateDueDate(item.card,item.summary.nextStatementDate);
+    const days=Math.ceil((new Date(dueDate).getTime()-new Date(todayIso).getTime())/86400000);
+    const dueAmount=item.summary.lastStatement?.remainingDue??item.summary.plannedPayment??0;
+    return days>=0&&days<=30?sum+Math.max(0,dueAmount):sum;
+  },0);
+  const categoryTotals=new Map<string,number>();
+  displayedCycleTransactions.forEach(transaction=>{
+    if(["purchase","installment","fee","interest"].includes(transaction.type))categoryTotals.set(transaction.category,(categoryTotals.get(transaction.category)??0)+transaction.amount);
+  });
+  const spendingCategories=[...categoryTotals.entries()].sort((a,b)=>b[1]-a[1]).slice(0,5),spendingTotal=spendingCategories.reduce((sum,[,amount])=>sum+amount,0);
+  const selectedCardNetwork=/mastercard|master card/i.test(`${selected.name} ${selected.bank}`)?"MASTERCARD":/visa/i.test(`${selected.name} ${selected.bank}`)?"VISA":"VISA";
   return (
     <section className="feature-page credit-wallet">
       {walletError&&<p className="auth-message" role="status">{walletError}</p>}
@@ -507,11 +953,10 @@ export default function CreditCardManagement({ onNotice }: Props) {
           </button>
         </div>
       </div>
-      <NetWorthSummary totalAssets={totalAssets} totalLiabilities={totalLiabilities} netWorth={netWorth} filter={netWorthFilter} hidden={hideNetWorth} onToggleHidden={()=>setHideNetWorth(value=>!value)} onFilter={applyNetWorthFilter}/>
-      <div className="account-view-tabs" role="tablist" aria-label="Account view">
-        <button type="button" role="tab" aria-selected={effectiveAccountView === "bank"} className={effectiveAccountView === "bank" ? "active" : ""} onClick={() => {setNetWorthFilter("All");setAccountView("bank")}}>Bank accounts</button>
-        <button type="button" role="tab" aria-selected={effectiveAccountView === "credit"} className={effectiveAccountView === "credit" ? "active" : ""} onClick={() => {setNetWorthFilter("All");setAccountView("credit")}}>Credit cards</button>
-      </div>
+      <AccountCardsSummaryStrip totalAssets={totalAssets} netWorth={netWorth} totalCreditUsed={totalCreditUsed} totalAvailableCredit={totalAvailableCredit} upcomingDue={upcomingDue30} filter={netWorthFilter} hidden={hideNetWorth} onToggleHidden={()=>setHideNetWorth(value=>!value)} onFilter={applyNetWorthFilter}/>
+      <div className="wallet-reference-layout">
+        <article className="surface wallet-reference-left wallet-carousel-panel">
+          <div className="surface-title wallet-reference-title"><b>My Cards & Accounts</b><small>{effectiveAccountView==="bank"?`${visibleAccounts.length} bank account${visibleAccounts.length===1?"":"s"}`:`${visibleCards.length} credit card${visibleCards.length===1?"":"s"}`}</small></div>
       <div className="wallet-carousel">
       <button type="button" className="wallet-carousel-arrow previous" aria-label={`Previous ${effectiveAccountView === "bank" ? "bank account" : "credit card"}`} onClick={()=>moveCarousel(-1)}><ChevronLeft/></button>
       <div className="wallet-card-strip" ref={walletCarousel}>
@@ -544,7 +989,7 @@ export default function CreditCardManagement({ onNotice }: Props) {
           );
         }) : visibleCards
           .map((card) => {
-            const c = computeCard(card, transactions, statements, payments, "2026-07-20", reservedForCard(card));
+            const c = computeCard(card, transactions, statements, payments, todayIso, reservedForCard(card));
             const cardColor=logoColors[`card-${card.id}`]??card.color;
             return (
               <button
@@ -559,11 +1004,7 @@ export default function CreditCardManagement({ onNotice }: Props) {
                 </span>
                 <b>{card.name}</b>
                 <small>{card.bank}</small>
-                <strong>
-                  {c.creditBalance
-                    ? `${privatePeso(c.creditBalance)} credit`
-                    : privatePeso(c.currentBalance)}
-                </strong>
+                <strong>{privatePeso(c.currentBalance)}</strong>
                 <em
                   className={c.paymentStatus.toLowerCase().replaceAll(" ", "-")}
                 >
@@ -575,10 +1016,12 @@ export default function CreditCardManagement({ onNotice }: Props) {
       </div>
       <button type="button" className="wallet-carousel-arrow next" aria-label={`Next ${effectiveAccountView === "bank" ? "bank account" : "credit card"}`} onClick={()=>moveCarousel(1)}><ChevronRight/></button>
       </div>
+        </article>
+        <article className="surface wallet-reference-left wallet-selected-details-panel">
       {effectiveAccountView === "bank" && !visibleAccounts.length ? (
-        <article className="surface"><p className="empty-card">No asset accounts to show. Add a bank, savings, checking, cash, or e-wallet account to begin.</p></article>
+        <p className="empty-card">No asset accounts to show. Add a bank, savings, checking, cash, or e-wallet account to begin.</p>
       ) : effectiveAccountView === "bank" ? (
-        <>
+        <div className="wallet-hero-wrap">
           <div className="wallet-hero bank-account-hero surface">
             <button type="button" className="wallet-card-identity bank-account-identity editable-wallet-card" onClick={()=>setModal("edit-account")} aria-label={`Edit ${selectedAccount.name}`} style={{"--card-color":logoColors[`account-${selectedAccount.id}`]??"#087a5b","--card-ink":logoTextColor(logoColors[`account-${selectedAccount.id}`]??"#087a5b")} as React.CSSProperties}>
               <BankLogo bankName={selectedAccount.bank} customLogo={selectedAccount.customLogo} size="large" onColorDetected={color=>rememberLogoColor(`account-${selectedAccount.id}`,color)} />
@@ -598,16 +1041,11 @@ export default function CreditCardManagement({ onNotice }: Props) {
               </div>
             </div>
           </div>
-          <article className="surface card-history account-history">
-            <div className="surface-title"><b>Transaction history</b><span className="account-history-count">{selectedAccountTransactions.length} total transaction{selectedAccountTransactions.length===1?"":"s"}</span></div>
-            <div className="account-statement-head compact-statement-head"><span>Date</span><span>Description</span><span>Category</span><span>Amount</span><span>Running balance</span></div>
-            {accountPeriods.length?accountPeriods.map(period=><AccountTransactionPeriod key={period.key} title={period.title} range={period.range} cutoff={period.cutoff} rows={period.rows} balances={accountStatementBalances} accountBalance={selectedAccount.balance} onEdit={transaction=>{setEditingAccountTransaction(transaction);setModal("edit-account-transaction")}}/>):<p className="empty-card">No transactions recorded for this account.</p>}
-          </article>
-        </>
+        </div>
       ) : !visibleCards.length ? (
-        <article className="surface"><p className="empty-card">No liability accounts to show. Add an active credit card to begin.</p></article>
+        <p className="empty-card">No liability accounts to show. Add an active credit card to begin.</p>
       ) : (
-        <>
+        <div className="wallet-hero-wrap">
       <div className="wallet-hero credit-card-hero surface">
         <button
           type="button"
@@ -622,22 +1060,126 @@ export default function CreditCardManagement({ onNotice }: Props) {
             <b>{selected.name}</b>
             <em>•••• {selected.last4}</em>
           </span>
-          <div className="credit-card-limits"><span><small>{selected.sharedLimitCardId||sharedLimitCards.length>1?"Shared credit limit":"Total credit limit"}</small><b>{privatePeso(effectiveCreditLimit)}</b></span><span><small>Available credit</small><b>{privatePeso(effectiveAvailableCredit)}</b></span></div>
+          <strong className="credit-card-network">{selectedCardNetwork}</strong>
         </button>
-        <div className="statement-overview-inline"><div className="statement-overview-title"><b>Statement Overview</b><div className="statement-overview-actions"><span className={`statement-status ${displayedPaymentStatus.toLowerCase().replaceAll(" ", "-")}`}>{displayedPaymentStatus}</span><button className="primary overview-add-transaction" onClick={() => setModal("payment")}>Pay card</button><button className="outline overview-add-transaction" onClick={() => setModal("transaction")}><Plus/>Add transaction</button><button className="outline overview-add-transaction" onClick={()=>setModal("transfer")}><ArrowLeftRight/>Transfer</button><button className="outline overview-add-transaction" onClick={() => setModal("statement")}><History/>View statement</button></div></div><div className="wallet-metrics">
-          <Metric
-            label="Current balance"
-            value={
-              computed.creditBalance
-                ? `${privatePeso(computed.creditBalance)} credit`
-                : privatePeso(computed.currentBalance)
-            }
-          />
-          <Metric label="Statement balance" value={privatePeso(displayedStatementBalance)} />
-          <Metric label="Statement date" value={pretty(displayedStatementDate)} />
-          <Metric label="Payment due date" value={pretty(displayedDueDate)} />
-        </div></div>
+        <div className="selected-card-operations">
+          <BalanceTrendChart data={balanceTrendData} hidden={hideNetWorth}/>
+          <div className="selected-credit-stats">
+            <Metric label={selected.sharedLimitCardId||sharedLimitCards.length>1?"Shared credit limit":"Total Credit Limit"} value={privatePeso(effectiveCreditLimit)} />
+            <Metric label="Available Credit Limit" value={privatePeso(effectiveAvailableCredit)} />
+            <div className="selected-utilization-stat">
+              <i style={{"--utilization":`${Math.min(100,Math.max(3,computed.utilization))}%`} as React.CSSProperties}/>
+              <b>{Math.round(computed.utilization)}%</b>
+              <small>Used</small>
+            </div>
+          </div>
+          <div className="selected-card-facts">
+            <Metric label="Card Type" value="Credit Card" />
+            <Metric label="Credit Limit" value={privatePeso(effectiveCreditLimit)} />
+            <Metric label="Statement Date" value={pretty(displayedStatementDate)} />
+            <Metric label="Payment Due Date" value={pretty(displayedDueDate)} />
+          </div>
+          <div className="selected-card-actions">
+            <button className="primary" onClick={() => setModal("payment")}><WalletCards/>Pay Card</button>
+            <button className="outline" onClick={() => setModal("transaction")}><Plus/>Add Transaction</button>
+            <button className="outline" onClick={()=>setModal("transfer")}><ArrowLeftRight/>Transfer</button>
+            <button className="outline" onClick={() => setModal("edit-card")}>••• More</button>
+          </div>
+        </div>
       </div>
+        </div>
+      )}
+        </article>
+        {effectiveAccountView==="credit"&&visibleCards.length?(
+          <aside className="wallet-reference-side wallet-reference-side-credit">
+            <article className="surface wallet-statement-card">
+              <div className="surface-title"><b>Statement Overview</b><span className={`statement-status ${displayedPaymentStatus.toLowerCase().replaceAll(" ", "-")}`}>{displayedPaymentStatus}</span></div>
+              <div className="wallet-statement-grid">
+                <Metric label="Current Balance" value={privatePeso(computed.currentBalance)}/>
+                <Metric label="Payment Due" value={privatePeso(Math.max(0,statementForViewing.remainingDue??displayedStatementBalance))}/>
+                <Metric label="Last Statement Balance" value={privatePeso(displayedStatementBalance)}/>
+                <Metric label="Minimum Due" value={privatePeso(displayedMinimumDue)}/>
+                <div className="wallet-days-due"><span>Days to Due</span><b>{daysUntilDue}</b><small>days</small><i style={{"--due-progress":`${Math.min(100,Math.max(8,(30-daysUntilDue)/30*100))}%`} as React.CSSProperties}/></div>
+              </div>
+            </article>
+            <div className="wallet-side-grid">
+              <article className="surface wallet-category-card">
+                <div className="surface-title"><b>Spending by Category</b><small>This cycle</small></div>
+                <div className="wallet-category-body">
+                  <div className="wallet-mini-donut"><b>{privatePeso(spendingTotal)}</b><small>Total Spent</small></div>
+                  <div className="wallet-category-list">
+                    {spendingCategories.length?spendingCategories.map(([category,amount],index)=><span key={category} title={category}><i className={`tone-${index%5}`}/><b>{category}</b><strong>{privatePeso(amount)}</strong><small>{spendingTotal?`${Math.round(amount/spendingTotal*100)}%`:"0%"}</small></span>):<p className="empty-card">No spending in this cycle yet.</p>}
+                  </div>
+                </div>
+              </article>
+            </div>
+          </aside>
+        ):(
+          <aside className="wallet-reference-side wallet-reference-side-bank">
+            <article className="surface wallet-statement-card">
+              <div className="surface-title"><b>Account Statement</b><button className="link" onClick={()=>setModal("account-statement")}>View statement</button></div>
+              <div className="wallet-statement-grid bank">
+                <Metric label="Available Balance" value={privatePeso(selectedAccount.balance)}/>
+                <Metric label="Current Balance" value={privatePeso(selectedAccount.balance)}/>
+                <Metric label="Total Credits" value={privatePeso(totalCredits)}/>
+                <Metric label="Total Debits" value={privatePeso(totalDebits)}/>
+                <Metric label="Average Daily Balance" value={privatePeso(averageDailyBalance)}/>
+              </div>
+            </article>
+            <article className="surface wallet-health-card">
+              <div className="surface-title"><b>Account Activity</b><button className="link" onClick={()=>setModal("account-transaction")}>Add transaction</button></div>
+              <div className="wallet-health-grid">
+                <span><b>{selectedAccountTransactions.length}</b><small>Transactions</small><em>{accountStatementPeriod}</em></span>
+                <span><b>{privatePeso(totalCredits)}</b><small>Credits</small><em>Money in</em></span>
+                <span><b>{privatePeso(totalDebits)}</b><small>Debits</small><em>Money out</em></span>
+              </div>
+            </article>
+          </aside>
+        )}
+      </div>
+      {effectiveAccountView === "bank" ? (
+        <article className="surface card-history account-history">
+          <div className="surface-title"><b>Transaction history</b><span className="account-history-count">{selectedAccountTransactions.length} total transaction{selectedAccountTransactions.length===1?"":"s"}</span></div>
+          <div className="account-statement-head compact-statement-head"><span>Date</span><span>Description</span><span>Category</span><span>Amount</span><span>Running balance</span></div>
+          {accountPeriods.length?accountPeriods.map(period=><AccountTransactionPeriod key={period.key} title={period.title} range={period.range} cutoff={period.cutoff} rows={period.rows} balances={accountStatementBalances} accountBalance={selectedAccount.balance} onEdit={transaction=>{setEditingAccountTransaction(transaction);setModal("edit-account-transaction")}}/>):<p className="empty-card">No transactions recorded for this account.</p>}
+        </article>
+      ) : visibleCards.length ? (
+        <article className="surface card-history">
+          <div className="surface-title">
+            <b>Transaction history</b>
+            <div className="history-filters">
+              {[
+                "All",
+                "Purchases",
+                "Payments",
+                "Refunds",
+                "Installments",
+                "Fees",
+                "Interest",
+                "Adjustments",
+              ].map((v) => (
+                <button
+                  className={filter === v ? "active" : ""}
+                  onClick={() => setFilter(v)}
+                  key={v}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="history-head">
+            <span aria-hidden="true" />
+            <span>Date</span>
+            <span>Description</span>
+            <span>Type</span>
+            <span>Category</span>
+            <span>Amount</span>
+            <span>Status</span>
+          </div>
+          {transactionCycles.map(cycle=><TransactionCycle key={`${cycle.start}-${cycle.end}`} title={cycle.title} range={`${pretty(cycle.start)} – ${pretty(cycle.end)}`} transactions={cycle.transactions} onEdit={transaction=>{setEditingCardTransaction(transaction);setModal("edit-transaction")}}/>)}
+        </article>
+      ):null}
       {/* Detailed balances and transactions are intentionally kept in View statement. */}
       {false && <article className="surface unified-card-overview">
         <div className="surface-title"><b>Balance & statement overview</b><span className={`statement-status ${displayedPaymentStatus.toLowerCase().replaceAll(" ", "-")}`}>{displayedPaymentStatus}</span></div>
@@ -765,43 +1307,6 @@ export default function CreditCardManagement({ onNotice }: Props) {
         </section>
         </div>
       </article>}
-      <article className="surface card-history">
-        <div className="surface-title">
-          <b>Transaction history</b>
-          <div className="history-filters">
-            {[
-              "All",
-              "Purchases",
-              "Payments",
-              "Refunds",
-              "Installments",
-              "Fees",
-              "Interest",
-              "Adjustments",
-            ].map((v) => (
-              <button
-                className={filter === v ? "active" : ""}
-                onClick={() => setFilter(v)}
-                key={v}
-              >
-                {v}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="history-head">
-          <span aria-hidden="true" />
-          <span>Date</span>
-          <span>Description</span>
-          <span>Type</span>
-          <span>Category</span>
-          <span>Amount</span>
-          <span>Status</span>
-        </div>
-        {transactionCycles.map(cycle=><TransactionCycle key={`${cycle.start}-${cycle.end}`} title={cycle.title} range={`${pretty(cycle.start)} – ${pretty(cycle.end)}`} transactions={cycle.transactions} onEdit={transaction=>{setEditingCardTransaction(transaction);setModal("edit-transaction")}}/>)}
-      </article>
-        </>
-      )}
       {modal === "payment" && (
         <PaymentModal
           card={selected}
@@ -817,16 +1322,28 @@ export default function CreditCardManagement({ onNotice }: Props) {
           onSave={saveTransaction}
         />
       )}{" "}
-      {modal === "edit-transaction" && editingCardTransaction && <EditCardTransactionModal transaction={editingCardTransaction} card={selected} onClose={()=>setModal(null)} onSave={updated=>{setTransactions(current=>current.map(transaction=>transaction.id===updated.id?updated:transaction));setModal(null);onNotice(`${updated.description} updated`)}} onDelete={()=>{setTransactions(current=>current.filter(transaction=>transaction.id!==editingCardTransaction.id));setModal(null);onNotice(`${editingCardTransaction.description} deleted`)}} onConvert={(installment,updatedTransaction)=>{setInstallments(current=>[installment,...current]);setTransactions(current=>current.map(transaction=>transaction.id===updatedTransaction.id?updatedTransaction:transaction));setModal(null);onNotice(`${updatedTransaction.description} converted to installment`)}}/>}{" "}
+      {modal === "edit-transaction" && editingCardTransaction && <EditCardTransactionModal transaction={editingCardTransaction} card={selected} onClose={()=>setModal(null)} onSave={updateCardTransaction} onDelete={()=>deleteCardTransaction(editingCardTransaction)} onConvert={(installment,updatedTransaction)=>{setInstallments(current=>[installment,...current]);updateCardTransaction(updatedTransaction);onNotice(`${updatedTransaction.description} converted to installment`)}}/>}{" "}
       {modal === "account-statement" && <Modal title="Statement of Account" subtitle={`${selectedAccount.name} · ${accountStatementPeriod}`} onClose={()=>setModal(null)} wide><div className="account-statement modal-account-statement"><div className="account-statement-summary"><Metric label="Credit transactions" value={String(accountStatementRows.filter(transaction=>transaction.type==="Income").length)}/><Metric label="Debit transactions" value={String(accountStatementRows.filter(transaction=>transaction.type==="Expense").length)}/><Metric label="Available balance" value={privatePeso(selectedAccount.balance)}/><Metric label="Current balance" value={privatePeso(selectedAccount.balance)}/><Metric label="Average daily balance" value={privatePeso(averageDailyBalance)}/><Metric label="Total credits" value={privatePeso(totalCredits)}/><Metric label="Total debits" value={privatePeso(totalDebits)}/></div><div className="account-statement-head compact-statement-head"><span aria-hidden="true"/><span>Transaction date</span><span>Description</span><span>Category</span><span>Amount</span><span>Running balance</span></div>{accountStatementRows.length?accountStatementRows.map(transaction=><div className="account-statement-row clickable-row" role="button" tabIndex={0} key={transaction.id} onClick={()=>{setEditingAccountTransaction(transaction);setModal("edit-account-transaction")}} onKeyDown={event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();setEditingAccountTransaction(transaction);setModal("edit-account-transaction")}}}><CategoryIcon value={transaction.category} className="account-row-leading-icon"/><span>{pretty(transaction.date)}</span><span><b>{transaction.description}</b><small>{transaction.type}</small></span><span>{transaction.category}</span><strong className={transaction.type==="Income"?"positive":"negative"}>{transaction.type==="Income"?"+":transaction.type==="Expense"?"−":""}{privatePeso(transaction.amount)}</strong><strong>{privatePeso(accountStatementBalances.get(transaction.id)??selectedAccount.balance)}</strong></div>):<p className="empty-card">No transactions in this statement period.</p>}</div></Modal>}{" "}
       {modal === "account-transaction" && (
         <AccountTransactionModal account={selectedAccount} onClose={() => setModal(null)} onSave={(entries) => {
           setAccountTransactions(current => [...current, ...entries]);
+          entries
+            .filter((entry): entry is AccountTransaction & { type: "Income" | "Expense" } => entry.type === "Income" || entry.type === "Expense")
+            .forEach((entry) =>
+              syncTransactionToCashFlowPlan({
+                id: entry.id,
+                type: entry.type,
+                category: entry.category,
+                amount: entry.amount,
+                date: entry.date,
+                accountName: selectedAccount.name,
+              }),
+            );
           setAccounts(current => current.map(account => account.id === selectedAccount.id ? {...account, balance: entries.reduce((balance, entry) => entry.type === "Income" ? balance + entry.amount : entry.type === "Expense" ? balance - entry.amount : balance, account.balance)} : account));
           setModal(null);onNotice(`${entries.length} transaction${entries.length === 1 ? "" : "s"} added to ${selectedAccount.name}`);
         }}/>
       )}{" "}
-      {modal === "edit-account-transaction" && editingAccountTransaction && <AccountTransactionModal account={selectedAccount} transaction={editingAccountTransaction} onClose={()=>setModal(null)} onSave={entries=>{const updated=entries[0];setAccountTransactions(current=>current.map(transaction=>transaction.id===updated.id?updated:transaction));const oldEffect=editingAccountTransaction.type==="Income"?editingAccountTransaction.amount:editingAccountTransaction.type==="Expense"?-editingAccountTransaction.amount:0,newEffect=updated.type==="Income"?updated.amount:updated.type==="Expense"?-updated.amount:0;setAccounts(current=>current.map(account=>account.id===selectedAccount.id?{...account,balance:account.balance-oldEffect+newEffect}:account));setModal(null);onNotice(`${updated.description} updated`)}} onDelete={()=>{const effect=editingAccountTransaction.type==="Income"?editingAccountTransaction.amount:editingAccountTransaction.type==="Expense"?-editingAccountTransaction.amount:0;setAccountTransactions(current=>current.filter(transaction=>transaction.id!==editingAccountTransaction.id));setAccounts(current=>current.map(account=>account.id===selectedAccount.id?{...account,balance:account.balance-effect}:account));setModal(null);onNotice(`${editingAccountTransaction.description} deleted`)}}/>}{" "}
+      {modal === "edit-account-transaction" && editingAccountTransaction && <AccountTransactionModal account={selectedAccount} transaction={editingAccountTransaction} onClose={()=>setModal(null)} onSave={entries=>{const updated=entries[0];updateLinkedCardPaymentForAccountTransaction(editingAccountTransaction,updated);setAccountTransactions(current=>current.map(transaction=>transaction.id===updated.id?updated:transaction));const oldEffect=accountTransactionEffect(editingAccountTransaction),newEffect=accountTransactionEffect(updated);setAccounts(current=>current.map(account=>account.id===selectedAccount.id?{...account,balance:account.balance-oldEffect+newEffect}:account));setModal(null);onNotice(`${updated.description} updated`)}} onDelete={()=>{removeLinkedCardPaymentForAccountTransaction(editingAccountTransaction);const effect=accountTransactionEffect(editingAccountTransaction);setAccountTransactions(current=>current.filter(transaction=>transaction.id!==editingAccountTransaction.id));setAccounts(current=>current.map(account=>account.id===selectedAccount.id?{...account,balance:account.balance-effect}:account));setModal(null);onNotice(`${editingAccountTransaction.description} deleted`)}}/>}{" "}
       {modal === "card" && (
         <CardModal cards={cards} onClose={() => setModal(null)} onSave={saveCard} />
       )}{" "}
@@ -854,7 +1371,7 @@ export default function CreditCardManagement({ onNotice }: Props) {
         <StatementModal
           statement={statementForViewing}
           transactions={displayedCycleTransactions}
-          payments={payments.filter((p) => p.cardId === selected.id)}
+          payments={payments.filter((p) => String(p.cardId) === String(selected.id))}
           onClose={() => setModal(null)}
           onEditTransaction={transaction=>{setEditingCardTransaction(transaction);setModal("edit-transaction")}}
         />
@@ -877,6 +1394,98 @@ const Metric = ({
     <b className={tone}>{value}</b>
   </div>
 );
+type BalanceTrendPoint = {
+  id: string;
+  period: string;
+  range: string;
+  currentBalance: number;
+  statementBalance: number;
+  creditLimit: number;
+};
+const compactPeso=(value:number)=>{
+  const amount=Math.abs(value);
+  if(amount>=1_000_000)return `₱${Number((value/1_000_000).toFixed(1))}M`;
+  if(amount>=1_000)return `₱${Number((value/1_000).toFixed(0))}K`;
+  return peso(value);
+};
+const trendPath=(points:{x:number;y:number}[])=>points.map((point,index)=>`${index?"L":"M"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
+function BalanceTrendChart({data,hidden}:{data:BalanceTrendPoint[];hidden:boolean}){
+  const hasTrend=data.length>=2,width=420,height=82,pad={left:38,right:12,top:8,bottom:18};
+  if(!hasTrend)return <div className="balance-trend-container balance-trend-empty">
+    <div className="balance-trend-title"><span><b>Balance Trend</b><small>Last 6 billing cycles</small></span></div>
+    <div className="balance-trend-message"><b>Not enough balance history yet</b><small>The trend will appear after statement history is recorded.</small></div>
+  </div>;
+  const maxValue=Math.max(1,...data.flatMap(item=>[item.currentBalance,item.statementBalance,item.creditLimit]));
+  const plotWidth=width-pad.left-pad.right,plotHeight=height-pad.top-pad.bottom;
+  const xAt=(index:number)=>pad.left+(data.length===1?plotWidth/2:index*(plotWidth/(data.length-1)));
+  const yAt=(value:number)=>pad.top+plotHeight-(Math.max(0,value)/maxValue)*plotHeight;
+  const currentPoints=data.map((item,index)=>({x:xAt(index),y:yAt(item.currentBalance)}));
+  const statementPoints=data.map((item,index)=>({x:xAt(index),y:yAt(item.statementBalance)}));
+  const limitY=yAt(data[data.length-1]?.creditLimit??maxValue),latest=data[data.length-1],latestPoint=currentPoints[currentPoints.length-1];
+  const show=(value:number)=>hidden?maskedMoney:peso(value);
+  const axis=(value:number)=>hidden?"₱•••":compactPeso(value);
+  return <div className="balance-trend-container">
+    <div className="balance-trend-title">
+      <span><b>Balance Trend</b><small>Last 6 billing cycles</small></span>
+      <div className="balance-trend-legend" aria-label="Balance trend legend">
+        <small><i className="current"/>Outstanding</small>
+        <small><i className="statement"/>Statement</small>
+        <small><i className="limit"/>Limit</small>
+      </div>
+    </div>
+    <svg className="balance-trend-chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="Balance trend by billing cycle">
+      <title>{`Latest cycle ${latest.range}: outstanding ${show(latest.currentBalance)}, statement ${show(latest.statementBalance)}, limit ${show(latest.creditLimit)}`}</title>
+      {[0,.5,1].map(tick=>{
+        const y=pad.top+plotHeight-(plotHeight*tick);
+        return <g key={tick}>
+          <line className="trend-grid" x1={pad.left} x2={width-pad.right} y1={y} y2={y}/>
+          <text className="trend-axis" x={4} y={y+3}>{axis(maxValue*tick)}</text>
+        </g>;
+      })}
+      <line className="trend-limit-line" x1={pad.left} x2={width-pad.right} y1={limitY} y2={limitY}/>
+      <path className="trend-statement-line" d={trendPath(statementPoints)}/>
+      <path className="trend-current-line" d={trendPath(currentPoints)}/>
+      {data.map((item,index)=><g key={item.id}>
+        <circle className={index===data.length-1?"trend-current-point latest":"trend-current-point"} cx={currentPoints[index].x} cy={currentPoints[index].y} r={index===data.length-1?3.6:2.6}>
+          <title>{`${item.period}: outstanding ${show(item.currentBalance)} · statement ${show(item.statementBalance)}`}</title>
+        </circle>
+        <text className="trend-period" x={currentPoints[index].x} y={height-4}>{item.period}</text>
+      </g>)}
+      {latestPoint&&<circle className="trend-latest-ring" cx={latestPoint.x} cy={latestPoint.y} r={6}/>}
+    </svg>
+  </div>;
+}
+function AccountCardsSummaryStrip({totalAssets,netWorth,totalCreditUsed,totalAvailableCredit,upcomingDue,filter,hidden,onToggleHidden,onFilter}:{totalAssets:number;netWorth:number;totalCreditUsed:number;totalAvailableCredit:number;upcomingDue:number;filter:NetWorthFilter;hidden:boolean;onToggleHidden:()=>void;onFilter:(value:NetWorthFilter)=>void}){
+  const display=(value:number)=>hidden?maskedMoney:peso(value);
+  return <article className="surface wallet-summary-strip">
+    <div className={`wallet-summary-primary ${netWorth<0?"negative":"positive"}`}>
+      <span>Net Worth</span>
+      <strong>{display(netWorth)}</strong>
+      <small>Assets minus liabilities</small>
+    </div>
+    <div className="wallet-summary-metric">
+      <span><WalletCards/></span>
+      <div><small>Cash (Assets)</small><b>{display(totalAssets)}</b><em>Total in bank accounts</em></div>
+    </div>
+    <div className="wallet-summary-metric">
+      <span><CreditCard/></span>
+      <div><small>Credit Used</small><b>{display(totalCreditUsed)}</b><em>Total credit used</em></div>
+    </div>
+    <div className="wallet-summary-metric">
+      <span><Receipt/></span>
+      <div><small>Available Credit</small><b>{display(totalAvailableCredit)}</b><em>Total available credit</em></div>
+    </div>
+    <div className="wallet-summary-metric">
+      <span><CalendarDays/></span>
+      <div><small>Upcoming Due</small><b>{display(upcomingDue)}</b><em>Due in next 30 days</em></div>
+    </div>
+    <div className="account-view-tabs wallet-summary-tabs" role="tablist" aria-label="Account view">
+      <button type="button" role="tab" aria-selected={filter==="All"} className={filter==="All"?"active":""} onClick={()=>onFilter("All")}>All</button>
+      <button type="button" role="tab" aria-selected={filter==="Assets"} className={filter==="Assets"?"active":""} onClick={()=>onFilter("Assets")}>Bank Accounts</button>
+      <button type="button" role="tab" aria-selected={filter==="Liabilities"} className={filter==="Liabilities"?"active":""} onClick={()=>onFilter("Liabilities")}>Credit Cards</button>
+    </div>
+  </article>
+}
 function NetWorthSummary({totalAssets,totalLiabilities,netWorth,filter,hidden,onToggleHidden,onFilter}:{totalAssets:number;totalLiabilities:number;netWorth:number;filter:NetWorthFilter;hidden:boolean;onToggleHidden:()=>void;onFilter:(value:NetWorthFilter)=>void}){
   const amount=filter==="Assets"?totalAssets:filter==="Liabilities"?totalLiabilities:netWorth;
   const title=filter==="Assets"?"Assets":filter==="Liabilities"?"Liabilities":"Net Worth";
@@ -910,7 +1519,7 @@ const Row = ({ label, value }: { label: string; value: string }) => (
 );
 function AccountTransactionPeriod({title,range,cutoff,rows,balances,accountBalance,onEdit}:{title:string;range:string;cutoff:string;rows:AccountTransaction[];balances:Map<number,number>;accountBalance:number;onEdit:(transaction:AccountTransaction)=>void}){const credits=rows.filter(row=>row.type==="Income").reduce((sum,row)=>sum+row.amount,0),debits=rows.filter(row=>row.type==="Expense").reduce((sum,row)=>sum+row.amount,0);return <section className="transaction-cycle"><div className="transaction-cycle-title"><span><b>{title}</b><small>{range} · Cutoff {pretty(cutoff)}</small></span><div className="cycle-totals account-period-totals"><span><small>Transactions</small><b>{rows.length}</b></span><span><small>Total credits</small><b className="positive">{peso(credits)}</b></span><span><small>Total debits</small><b>{peso(debits)}</b></span></div></div>{rows.map(transaction=><div className="account-statement-row clickable-row" role="button" tabIndex={0} key={transaction.id} onClick={()=>onEdit(transaction)} onKeyDown={event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();onEdit(transaction)}}}><CategoryIcon value={transaction.category} className="account-row-leading-icon"/><span>{pretty(transaction.date)}</span><span><b>{transaction.description}</b><small>{transaction.type}</small></span><span>{transaction.category}</span><strong className={transaction.type==="Income"?"positive":"negative"}>{transaction.type==="Income"?"+":transaction.type==="Expense"?"−":""}{peso(transaction.amount)}</strong><strong>{peso(balances.get(transaction.id)??accountBalance)}</strong></div>)}</section>}
 
-function TransactionCycle({title,range,transactions,onEdit}:{title:string;range:string;transactions:CardTransaction[];onEdit:(transaction:CardTransaction)=>void}){const total=transactions.reduce((sum,transaction)=>sum+(["refund","credit","payment"].includes(transaction.type)?-transaction.amount:transaction.amount),0);return <section className="transaction-cycle"><div className="transaction-cycle-title"><span><b>{title}</b><small>{range} · Cutoff {range.split(" – ")[1]??range}</small></span><div className="cycle-totals"><span><small>Transactions</small><b>{transactions.length}</b></span><span><small>Cycle total</small><b className={total<0?"positive":""}>{peso(total)}</b></span></div></div>{transactions.length?transactions.map(t=><div className="history-row clickable-row" role="button" tabIndex={0} key={t.id} onClick={()=>onEdit(t)} onKeyDown={event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();onEdit(t)}}}><CategoryIcon value={t.category} className="account-row-leading-icon"/><span>{pretty(t.postedDate)}</span><span><b>{t.description}</b><small>{t.expenseCounted?'Counts once as expense':'Liability/credit activity'}</small></span><span>{t.type}</span><span>{t.category}</span><strong className={["refund","credit","payment"].includes(t.type)?"positive":""}>{["refund","credit","payment"].includes(t.type)?"−":""}{peso(t.amount)}</strong><em>{t.status}</em></div>):<div className="empty-cycle">No transactions in this billing cycle.</div>}</section>}
+function TransactionCycle({title,range,transactions,onEdit}:{title:string;range:string;transactions:CardTransaction[];onEdit:(transaction:CardTransaction)=>void}){const total=transactions.reduce((sum,transaction)=>transaction.type==="payment"?sum:sum+(["refund","credit"].includes(transaction.type)?-transaction.amount:transaction.amount),0);return <section className="transaction-cycle"><div className="transaction-cycle-title"><span><b>{title}</b><small>{range} · Cutoff {range.split(" – ")[1]??range}</small></span><div className="cycle-totals"><span><small>Transactions</small><b>{transactions.length}</b></span><span><small>Cycle total</small><b className={total<0?"positive":""}>{peso(total)}</b></span></div></div>{transactions.length?transactions.map(t=><div className="history-row clickable-row" role="button" tabIndex={0} key={t.id} onClick={()=>onEdit(t)} onKeyDown={event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();onEdit(t)}}}><CategoryIcon value={t.category} className="account-row-leading-icon"/><span>{pretty(t.postedDate)}</span><span><b>{t.description}</b><small>{t.expenseCounted?'Counts once as expense':'Liability/credit activity'}</small></span><span>{t.type}</span><span>{t.category}</span><strong className={["refund","credit","payment"].includes(t.type)?"positive":""}>{["refund","credit","payment"].includes(t.type)?"−":""}{peso(t.amount)}</strong><em>{t.status}</em></div>):<div className="empty-cycle">No transactions in this billing cycle.</div>}</section>}
 function groupTransactionsByBillingCycle(card:CardConfig,transactions:CardTransaction[],currentStart:string,currentEnd:string,lastStatement?:CardStatement){
   const cycles=new Map<string,{start:string;end:string;transactions:CardTransaction[]}>();
   cycles.set(`${currentStart}|${currentEnd}`,{start:currentStart,end:currentEnd,transactions:[]});
@@ -991,7 +1600,7 @@ function PaymentModal({
         <div>
           <label>
             Payment account
-            <ConnectedAccountSelect defaultValue={card.linkedAccount} required/>
+            <ConnectedAccountSelect defaultValue={card.linkedAccount} required showCards={false} showOther={false}/>
           </label>
           <label>
             Payment date
@@ -1495,7 +2104,8 @@ function EditCardTransactionModal({transaction,card,onClose,onSave,onDelete,onCo
       </form>
     </Modal>
   }
-  return <Modal title="Edit card transaction" subtitle={`Update this transaction for ${card.name}.`} onClose={onClose}><form onSubmit={event=>{event.preventDefault();const form=new FormData(event.currentTarget),type=String(form.get("type")) as CardTransaction["type"],date=String(form.get("date"));onSave({...transaction,type,description:String(form.get("description")),category:String(form.get("category")),amount:Number(form.get("amount")),transactionDate:date,postedDate:date,status:"posted",notes:String(form.get("notes")||""),expenseCounted:["purchase","installment","fee","interest"].includes(type)})}}><div className="form-grid"><label>Transaction type<select name="type" defaultValue={transaction.type}>{["purchase","installment","fee","interest","refund","credit","adjustment"].map(type=><option key={type}>{type}</option>)}</select></label><label>Card<input value={card.name} disabled/></label></div><label>Description<input name="description" required defaultValue={transaction.description}/></label><CategoryFields defaultValue={transaction.category}/><div className="form-grid"><label>Amount<input name="amount" type="number" min="0.01" step="0.01" required defaultValue={transaction.amount}/></label><label>Transaction date<input name="date" type="date" required defaultValue={transaction.transactionDate}/></label></div><label>Notes (optional)<textarea name="notes" rows={2} defaultValue={transaction.notes}/></label>{canConvert&&<button className="outline submit" type="button" onClick={()=>setMode("convert")}><WalletCards/>Convert transaction to installment</button>}<div className="record-edit-actions"><button className="primary" type="submit">Save changes</button><button className="danger-outline" type="button" onClick={onDelete}><Trash2/>Delete transaction</button></div></form></Modal>
+  const typeOptions=transaction.type==="payment"?["payment","purchase","installment","fee","interest","refund","credit","adjustment"]:["purchase","installment","fee","interest","refund","credit","adjustment"];
+  return <Modal title="Edit card transaction" subtitle={`Update this transaction for ${card.name}.`} onClose={onClose}><form onSubmit={event=>{event.preventDefault();const form=new FormData(event.currentTarget),type=String(form.get("type")) as CardTransaction["type"],date=String(form.get("date"));onSave({...transaction,type,description:String(form.get("description")),category:String(form.get("category")),amount:Number(form.get("amount")),transactionDate:date,postedDate:date,status:"posted",notes:String(form.get("notes")||""),expenseCounted:["purchase","installment","fee","interest"].includes(type)})}}><div className="form-grid"><label>Transaction type<select name="type" defaultValue={transaction.type}>{typeOptions.map(type=><option key={type}>{type}</option>)}</select></label><label>Card<input value={card.name} disabled/></label></div><label>Description<input name="description" required defaultValue={transaction.description}/></label><CategoryFields defaultValue={transaction.category}/><div className="form-grid"><label>Amount<input name="amount" type="number" min="0.01" step="0.01" required defaultValue={transaction.amount}/></label><label>Transaction date<input name="date" type="date" required defaultValue={transaction.transactionDate}/></label></div><label>Notes (optional)<textarea name="notes" rows={2} defaultValue={transaction.notes}/></label>{canConvert&&<button className="outline submit" type="button" onClick={()=>setMode("convert")}><WalletCards/>Convert transaction to installment</button>}<div className="record-edit-actions"><button className="primary" type="submit">Save changes</button><button className="danger-outline" type="button" onClick={onDelete}><Trash2/>Delete transaction</button></div></form></Modal>
 }
 
 function AccountTransactionModal({account,transaction,onClose,onSave,onDelete}:{account:AccountRecord;transaction?:AccountTransaction;onClose:()=>void;onSave:(entries:AccountTransaction[])=>void;onDelete?:()=>void}) {
@@ -1537,6 +2147,7 @@ function TransferMoneyModal({
     <Modal
       title="Transfer money"
       subtitle="Move money between bank accounts, e-wallets, and credit cards."
+      className="account-transfer-modal"
       onClose={onClose}
     >
       <form
@@ -1642,6 +2253,7 @@ function CardModal({
           const f = new FormData(e.currentTarget),
             statementDay = Number(f.get("statementDay")),
             excludeFromNetWorth = f.get("excludeFromNetBalance") === "on",
+            excludeFromCashFlow = f.get("excludeFromCashFlow") === "on",
             nextCard: CardConfig = {
               id: card?.id ?? Date.now(),
               bankId,
@@ -1659,6 +2271,7 @@ function CardModal({
               excludeFromNetBalance: excludeFromNetWorth,
               excludedFromNetBalance: excludeFromNetWorth,
               excludeFromNetWorth,
+              excludeFromCashFlow,
               statementDay,
               dueDateRule: rule,
               fixedDueDay: Number(f.get("fixedDueDay") || 1),
@@ -1701,6 +2314,13 @@ function CardModal({
             Exclude this card from Net Worth totals
           </label>
           <small className="field-help">The card remains tracked, but its balance is not counted in Total Liabilities or Net Worth.</small>
+        </div>
+        <div className="net-balance-setting">
+          <label className="autopay-check">
+            <input name="excludeFromCashFlow" type="checkbox" defaultChecked={truthyFlag(card?.excludeFromCashFlow)} />
+            Exclude this card from Cash Flow Plan
+          </label>
+          <small className="field-help">The card and its payment due remain tracked everywhere else, but its unpaid balance will not appear as an expected Cash Flow expense.</small>
         </div>
         <div className="logo-upload-row"><BankLogo bankId={bankId} bankName={bankName} customLogo={customLogo} size="large"/><label>Custom logo (optional)<input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={async event=>{const file=event.target.files?.[0];if(!file)return;try{setCustomLogo(await readLogoFile(file));setLogoError("")}catch(error){setLogoError(error instanceof Error?error.message:"Logo could not be loaded.")}event.target.value=""}}/><small>PNG, JPG, WebP, or SVG. Images are optimized automatically.</small></label>{customLogo&&<button type="button" className="link" onClick={()=>setCustomLogo("")}>Use automatic logo</button>}{logoError&&<div className="form-error">{logoError}</div>}</div>
         <div className="form-grid">

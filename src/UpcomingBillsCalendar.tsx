@@ -28,6 +28,7 @@ type Bill = {
   category: string;
   amount: number;
   dueDate: string;
+  recurrenceStartDate?: string;
   frequency: string;
   account: string;
   status: string;
@@ -48,6 +49,7 @@ type Bill = {
   lastPaymentMethod?: string;
   paymentTransactionId?: number;
   sourceKey?: string;
+  recordType?: "subscription";
 };
 
 type WalletCardLogo = {
@@ -59,7 +61,8 @@ type WalletCardLogo = {
   active?: boolean;
 };
 type Props = { onNotice: (text: string) => void };
-type BillView = "due7" | "creditCards" | "expenses" | "recurring" | "subscriptions" | "paid";
+type BillView = "due7" | "month" | "creditCards" | "expenses" | "recurring" | "subscriptions" | "paid";
+const billViewStorageKey = "pennywise.bills.selectedView";
 
 const initialBills: Bill[] = [
   {
@@ -281,6 +284,17 @@ const isDueWithinNextSevenDays = (bill: Bill) => {
   const daysUntilDue = Math.round((dueDate.getTime() - today.getTime()) / 86_400_000);
   return daysUntilDue >= 0 && daysUntilDue <= 7;
 };
+const isDueThisMonth = (bill: Bill) => {
+  if (["Paid", "Skipped", "Cancelled"].includes(bill.status)) return false;
+  const dueDate = parseLocalDate(bill.dueDate);
+  if (!dueDate) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  dueDate.setHours(0, 0, 0, 0);
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  return dueDate >= monthStart && dueDate <= monthEnd;
+};
 const daysLeftLabel = (value: string) => {
   const dueDate = parseLocalDate(value);
   if (!dueDate) return "—";
@@ -308,19 +322,12 @@ const isRecurringBill = (bill: Bill) => {
   const frequency = String(bill.frequency || "").toLowerCase();
   return bill.planType === "Recurring" || Boolean(frequency && frequency !== "one-time" && frequency !== "one time");
 };
-const isSubscriptionBill = (bill: Bill) => {
-  const searchable = `${bill.category} ${bill.name} ${bill.notes}`.toLowerCase();
-  return (
-    searchable.includes("subscription") ||
-    searchable.includes("netflix") ||
-    searchable.includes("spotify") ||
-    searchable.includes("icloud") ||
-    searchable.includes("google one") ||
-    searchable.includes("gym") ||
-    searchable.includes("membership") ||
-    searchable.includes("software") ||
-    searchable.includes("renewal")
+const isSubscriptionText = (...values: Array<unknown>) =>
+  /subscription|subscriptions|netflix|spotify|icloud|google one|gym|membership|software|renewal/i.test(
+    values.map((value) => String(value || "")).join(" "),
   );
+const isSubscriptionBill = (bill: Bill) => {
+  return bill.recordType === "subscription" || isSubscriptionText(bill.category, bill.name, bill.notes);
 };
 const sumBills = (items: Bill[]) =>
   items.reduce((total, bill) => total + Number(bill.amount || 0), 0);
@@ -347,7 +354,16 @@ export default function UpcomingBillsCalendar({ onNotice }: Props) {
   const [showAdd, setShowAdd] = useState(false);
   const [billPlanType,setBillPlanType]=useState<"One-time"|"Recurring"|"Installment">("One-time");
   const [billAction,setBillAction]=useState<'pay'|'edit'|null>(null);
-  const [billView,setBillView]=useState<BillView>("due7");
+  const [billView,setBillView]=useState<BillView>(() => {
+    const saved = localStorage.getItem(billViewStorageKey) as BillView | null;
+    return saved && ["due7", "month", "creditCards", "expenses", "recurring", "subscriptions", "paid"].includes(saved)
+      ? saved
+      : "due7";
+  });
+  const selectBillView = (view: BillView) => {
+    localStorage.setItem(billViewStorageKey, view);
+    setBillView(view);
+  };
   const sortedBills = [...bills].sort((a, b) => String(a.dueDate || "").localeCompare(String(b.dueDate || "")) || a.name.localeCompare(b.name));
   const selected = sortedBills.find((b) => b.id === selectedId) ?? sortedBills[0];
   const detailBill = sortedBills.find((b) => b.id === detailBillId);
@@ -361,10 +377,13 @@ export default function UpcomingBillsCalendar({ onNotice }: Props) {
   };
   const activeBills = sortedBills.filter((bill) => !isInactiveBill(bill));
   const dueNextSevenDayBills = sortedBills.filter(isDueWithinNextSevenDays);
-  const creditCardBills = dueNextSevenDayBills.filter(isCreditCardBill);
-  const expenseBills = dueNextSevenDayBills.filter((bill) => !isCreditCardBill(bill));
+  const dueThisMonthBills = sortedBills.filter(isDueThisMonth);
+  const visiblePeriodBills = billView === "month" ? dueThisMonthBills : dueNextSevenDayBills;
+  const creditCardBills = visiblePeriodBills.filter(isCreditCardBill);
+  const expenseBills = visiblePeriodBills.filter((bill) => !isCreditCardBill(bill));
   const viewDefinitions: Array<{key:BillView;label:string;count:number}> = [
     {key:"due7",label:"Due Next 7 Days",count:dueNextSevenDayBills.length},
+    {key:"month",label:"Due This Month",count:dueThisMonthBills.length},
     {key:"creditCards",label:"Credit Cards",count:activeBills.filter(isCreditCardBill).length},
     {key:"expenses",label:"Expenses",count:activeBills.filter((bill)=>!isCreditCardBill(bill)).length},
     {key:"recurring",label:"Recurring",count:activeBills.filter(isRecurringBill).length},
@@ -391,24 +410,32 @@ export default function UpcomingBillsCalendar({ onNotice }: Props) {
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const name = String(form.get("name"));
+    const category = String(form.get("category"));
+    const notes = String(form.get("notes"));
+    const isSubscription = isSubscriptionText(category, name, notes);
     const bill: Bill = {
       id: Date.now(),
-      name: String(form.get("name")),
-      category: String(form.get("category")),
+      name,
+      category,
       amount: Number(form.get("amount")),
       dueDate: String(form.get("dueDate")),
+      recurrenceStartDate: String(form.get("dueDate")),
       frequency: billPlanType==="One-time"?"One-time":billPlanType==="Installment"?`Installment · ${Number(form.get("installmentMonths"))} months`:String(form.get("frequency")),
       account: "",
       status: String(form.get("status")),
       autopay: form.get("autopay") === "on",
       autopayAccount: String(form.get("autopayAccount") || ""),
       reminder: String(form.get("reminder")),
-      notes: String(form.get("notes")),
+      notes,
       planType:billPlanType,
       installmentMonths:billPlanType==="Installment"?Number(form.get("installmentMonths")):undefined,
+      recordType:isSubscription?"subscription":undefined,
     };
     setBills((current) => [...current, bill].sort((a, b) => String(a.dueDate || "").localeCompare(String(b.dueDate || "")) || a.name.localeCompare(b.name)));
     setSelectedId(bill.id);
+    if (isSubscription) selectBillView("subscriptions");
+    else if (billPlanType === "Recurring") selectBillView("recurring");
     setShowAdd(false);
     onNotice(`${bill.name} added`);
   };
@@ -450,10 +477,10 @@ export default function UpcomingBillsCalendar({ onNotice }: Props) {
         </div>
       </div>
       <div className="bill-view-tabs" role="tablist" aria-label="Bills and payments views">
-        {viewDefinitions.map((view)=><button key={view.key} role="tab" aria-selected={billView===view.key} className={billView===view.key?"active":""} onClick={()=>setBillView(view.key)}>{view.label}<span>{view.count}</span></button>)}
+        {viewDefinitions.map((view)=><button key={view.key} role="tab" aria-selected={billView===view.key} className={billView===view.key?"active":""} onClick={()=>selectBillView(view.key)}>{view.label}<span>{view.count}</span></button>)}
       </div>
       <div className="bill-calendar-layout">
-        {billView==="due7" ? <div className="bills-two-column-layout">
+        {billView==="due7" || billView==="month" ? <div className="bills-two-column-layout">
           <BillColumn
             title="Credit Card Bills"
             totalLabel="Total Credit Card Bills"
@@ -495,7 +522,7 @@ export default function UpcomingBillsCalendar({ onNotice }: Props) {
         </div>}
       </div>
       {detailBill&&<BillDetailModal bill={detailBill} onClose={()=>setDetailBillId(0)} onPay={()=>{setSelectedId(detailBill.id);setDetailBillId(0);setBillAction('pay')}} onEdit={()=>{setSelectedId(detailBill.id);setDetailBillId(0);setBillAction('edit')}} onDelete={()=>{const remaining=bills.filter(bill=>bill.id!==detailBill.id);setBills(remaining);if(selectedId===detailBill.id&&remaining[0])setSelectedId(remaining[0].id);setDetailBillId(0);onNotice(`${detailBill.name} deleted`)}}/>}
-      {billAction&&selected&&<BillActionModal mode={billAction} bill={selected} onClose={()=>setBillAction(null)} onSave={(values)=>{if(billAction==='pay'){payBill(selected,String(values.account||""),String(values.lastPaymentDate||selected.dueDate));setBillAction(null);return}const shouldClearPayment=!/^paid$/i.test(String(values.status||selected.status));const cleanedValues=shouldClearPayment?{...values,paymentHistory:[],lastPaymentDate:undefined,lastPaymentAmount:undefined,lastPaymentMethod:undefined,paymentTransactionId:undefined}:values;setBills(rows=>rows.map(b=>b.id===selected.id?{...b,...cleanedValues}:b));setBillAction(null);onNotice(`${selected.name} updated`)}} onDelete={()=>{const remaining=bills.filter(bill=>bill.id!==selected.id);setBills(remaining);if(remaining[0])setSelectedId(remaining[0].id);setBillAction(null);onNotice(`${selected.name} deleted`)}}/>}
+      {billAction&&selected&&<BillActionModal mode={billAction} bill={selected} onClose={()=>setBillAction(null)} onSave={(values)=>{if(billAction==='pay'){payBill(selected,String(values.account||""),String(values.lastPaymentDate||selected.dueDate));setBillAction(null);return}const shouldClearPayment=!/^paid$/i.test(String(values.status||selected.status));const cleanedValues=shouldClearPayment?{...values,paymentHistory:[],lastPaymentDate:undefined,lastPaymentAmount:undefined,lastPaymentMethod:undefined,paymentTransactionId:undefined}:values;setBills(rows=>rows.map(b=>{if(b.id!==selected.id)return b;const updated={...b,...cleanedValues};return {...updated,recordType:isSubscriptionText(updated.category,updated.name,updated.notes)?"subscription":undefined}}));setBillAction(null);onNotice(`${selected.name} updated`)}} onDelete={()=>{const remaining=bills.filter(bill=>bill.id!==selected.id);setBills(remaining);if(remaining[0])setSelectedId(remaining[0].id);setBillAction(null);onNotice(`${selected.name} deleted`)}}/>}
       {showAdd && (
         <div className="modal-backdrop" onMouseDown={() => setShowAdd(false)}>
           <section

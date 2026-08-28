@@ -16,6 +16,7 @@ import AdvancedPlanning from "./AdvancedPlanning";
 import { useFirestoreState } from "./hooks/useFirestoreState";
 import { useWalletSnapshot } from "./hooks/useWalletSnapshot";
 import { includedCardIds } from "./utils/netBalanceFilters";
+import { ConnectedAccountSelect } from "./components/ConnectedAccountSelect";
 import {
   ArrowDown,
   ArrowUp,
@@ -48,6 +49,27 @@ type Props = {
 const money = (value: string, tone = "") => (
   <strong className={tone}>{value}</strong>
 );
+const peso = (value: number) =>
+  `₱${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const numericAmount = (value: unknown) =>
+  Number(String(value ?? "").replace(/[^0-9.-]/g, "")) || 0;
+const cardPaymentMarker = (notes?: string) =>
+  String(notes || "").match(/(?:bill-payment|card-payment):[^·]+/)?.[0] ?? "";
+const cardTransactionDeleteKeys = (transaction: {
+  cardId: number;
+  transactionDate?: string;
+  postedDate?: string;
+  type: string;
+  amount: number;
+  description: string;
+  notes?: string;
+}) =>
+  [
+    cardPaymentMarker(transaction.notes),
+    `${transaction.cardId}|${transaction.postedDate || transaction.transactionDate || ""}|${transaction.type}|${Number(transaction.amount || 0).toFixed(2)}`,
+    `${transaction.cardId}|${transaction.postedDate || transaction.transactionDate || ""}|${transaction.type}|${Number(transaction.amount || 0).toFixed(2)}|${transaction.description}`,
+    `${transaction.cardId}|${transaction.postedDate || transaction.transactionDate || ""}|${transaction.type}|${String(transaction.amount)}|${transaction.description}`,
+  ].filter(Boolean);
 
 const transactions = [
   ["Jul 26", "Salary", "Income", "BPI Savings", "+₱25,000", "Expected"],
@@ -316,7 +338,7 @@ function CalendarPage({ onAdd, onNotice }: Omit<Props, "page">) {
 
 function Transactions({ onAdd, onNotice }: Omit<Props, "page">) {
   const [filter, setFilter] = useState("All");
-  type Wallet={accounts:{id:number;name:string;balance:number}[];cards:{id:number;name:string;active?:boolean;includeInNetBalance?:boolean}[];accountTransactions:{id:number;accountId:number;date:string;description:string;type:string;category:string;amount:number;status:string;notes?:string}[];transactions:{id:number;cardId:number;transactionDate:string;postedDate:string;description:string;type:string;category:string;amount:number;status:string;notes?:string}[];[key:string]:unknown};
+  type Wallet={accounts:{id:number;name:string;balance:number}[];cards:{id:number;name:string;active?:boolean;includeInNetBalance?:boolean}[];accountTransactions:{id:number;accountId:number;date:string;description:string;type:string;category:string;amount:number;status:string;notes?:string}[];transactions:{id:number;cardId:number;transactionDate:string;postedDate:string;description:string;type:string;category:string;amount:number;status:string;notes?:string}[];deletedCardTransactionKeys?:string[];deletedCardPaymentKeys?:string[];[key:string]:unknown};
   type LedgerEntry={id:number;source:"account"|"card";date:string;description:string;type:string;category:string;account:string;amount:number;status:string;notes:string};
   const [wallet,saveWallet]=useWalletSnapshot<Wallet>({accounts:[],cards:[],accountTransactions:[],transactions:[]}),[editing,setEditing]=useState<LedgerEntry|null>(null);
   const entries:LedgerEntry[]=[...wallet.accountTransactions.map(transaction=>({...transaction,source:"account" as const,account:wallet.accounts.find(account=>account.id===transaction.accountId)?.name??"Deleted account",notes:transaction.notes??""})),...wallet.transactions.filter(transaction=>transaction.type!=="payment").map(transaction=>({...transaction,source:"card" as const,date:transaction.transactionDate||transaction.postedDate,account:wallet.cards.find(card=>card.id===transaction.cardId)?.name??"Deleted card",type:["refund","credit"].includes(transaction.type)?"Refund":"Expense",notes:transaction.notes??""}))].sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id);
@@ -394,7 +416,45 @@ function Transactions({ onAdd, onNotice }: Omit<Props, "page">) {
           ))}
         {!entries.length&&<p className="empty-card">No transactions yet. Add one from Accounts &amp; Cards.</p>}
       </article>
-      {editing&&<div className="modal-backdrop" onMouseDown={()=>setEditing(null)}><section className="modal" role="dialog" aria-modal="true" onMouseDown={event=>event.stopPropagation()}><div className="modal-head"><div><h2>Edit transaction</h2><p>Changes are reflected in Accounts &amp; Cards.</p></div><button className="icon-button" aria-label="Close" onClick={()=>setEditing(null)}><X/></button></div><form onSubmit={event=>{event.preventDefault();const form=new FormData(event.currentTarget),description=String(form.get("description")),category=String(form.get("category")),newAmount=Number(form.get("amount")),date=String(form.get("date")),notes=String(form.get("notes")||"");if(editing.source==="card")saveWallet({...wallet,transactions:wallet.transactions.map(transaction=>transaction.id===editing.id?{...transaction,description,category,amount:newAmount,transactionDate:date,postedDate:date,notes}:transaction)});else{const original=wallet.accountTransactions.find(transaction=>transaction.id===editing.id),effect=(type:string,value:number)=>type==="Income"?value:type==="Expense"?-value:0,accountId=original?.accountId;saveWallet({...wallet,accounts:wallet.accounts.map(account=>account.id===accountId?{...account,balance:account.balance-effect(original?.type??"",original?.amount??0)+effect(original?.type??"",newAmount)}:account),accountTransactions:wallet.accountTransactions.map(transaction=>transaction.id===editing.id?{...transaction,description,category,amount:newAmount,date,notes}:transaction)})}onNotice(`${description} updated`);setEditing(null)}}><label>Description<input name="description" required defaultValue={editing.description}/></label><CategoryFields defaultValue={editing.category}/><div className="form-grid"><label>Amount<input name="amount" type="number" min="0.01" step="0.01" required defaultValue={editing.amount}/></label><label>Date<input name="date" type="date" required defaultValue={editing.date}/></label></div><label>Account<input value={editing.account} disabled/></label><label>Notes (optional)<textarea name="notes" defaultValue={editing.notes}/></label><div className="record-edit-actions"><button className="primary" type="submit">Save changes</button><button className="danger-outline" type="button" onClick={()=>{if(editing.source==="card")saveWallet({...wallet,transactions:wallet.transactions.filter(transaction=>transaction.id!==editing.id)});else{const original=wallet.accountTransactions.find(transaction=>transaction.id===editing.id),effect=original?.type==="Income"?(original.amount):original?.type==="Expense"?-original.amount:0;saveWallet({...wallet,accounts:wallet.accounts.map(account=>account.id===original?.accountId?{...account,balance:account.balance-effect}:account),accountTransactions:wallet.accountTransactions.filter(transaction=>transaction.id!==editing.id)})}onNotice(`${editing.description} deleted`);setEditing(null)}}><Trash2/>Delete transaction</button></div></form></section></div>}
+      {editing&&<div className="modal-backdrop" onMouseDown={()=>setEditing(null)}>
+        <section className="modal" role="dialog" aria-modal="true" onMouseDown={event=>event.stopPropagation()}>
+          <div className="modal-head">
+            <div><h2>Edit transaction</h2><p>Changes are reflected in Accounts &amp; Cards.</p></div>
+            <button className="icon-button" aria-label="Close" onClick={()=>setEditing(null)}><X/></button>
+          </div>
+          <form onSubmit={event=>{
+            event.preventDefault();
+            const form=new FormData(event.currentTarget),description=String(form.get("description")),category=String(form.get("category")),newAmount=Number(form.get("amount")),date=String(form.get("date")),notes=String(form.get("notes")||"");
+            if(editing.source==="card")saveWallet({...wallet,transactions:wallet.transactions.map(transaction=>transaction.id===editing.id?{...transaction,description,category,amount:newAmount,transactionDate:date,postedDate:date,notes}:transaction)});
+            else{
+              const original=wallet.accountTransactions.find(transaction=>transaction.id===editing.id),effect=(type:string,value:number)=>type==="Income"?value:type==="Expense"?-value:0,accountId=original?.accountId;
+              saveWallet({...wallet,accounts:wallet.accounts.map(account=>account.id===accountId?{...account,balance:account.balance-effect(original?.type??"",original?.amount??0)+effect(original?.type??"",newAmount)}:account),accountTransactions:wallet.accountTransactions.map(transaction=>transaction.id===editing.id?{...transaction,description,category,amount:newAmount,date,notes}:transaction)});
+            }
+            onNotice(`${description} updated`);
+            setEditing(null);
+          }}>
+            <label>Description<input name="description" required defaultValue={editing.description}/></label>
+            <CategoryFields defaultValue={editing.category}/>
+            <div className="form-grid"><label>Amount<input name="amount" type="number" min="0.01" step="0.01" required defaultValue={editing.amount}/></label><label>Date<input name="date" type="date" required defaultValue={editing.date}/></label></div>
+            <label>Account<input value={editing.account} disabled/></label>
+            <label>Notes (optional)<textarea name="notes" defaultValue={editing.notes}/></label>
+            <div className="record-edit-actions">
+              <button className="primary" type="submit">Save changes</button>
+              <button className="danger-outline" type="button" onClick={()=>{
+                if(editing.source==="card"){
+                  const original=wallet.transactions.find(transaction=>transaction.id===editing.id),deleteKeys=original?cardTransactionDeleteKeys(original):[],marker=cardPaymentMarker(original?.notes);
+                  saveWallet({...wallet,deletedCardTransactionKeys:[...new Set([...(wallet.deletedCardTransactionKeys??[]),...deleteKeys])],deletedCardPaymentKeys:marker?[...new Set([...(wallet.deletedCardPaymentKeys??[]),marker])]:wallet.deletedCardPaymentKeys,transactions:wallet.transactions.filter(transaction=>transaction.id!==editing.id&&!deleteKeys.some(key=>cardTransactionDeleteKeys(transaction).includes(key)))});
+                }else{
+                  const original=wallet.accountTransactions.find(transaction=>transaction.id===editing.id),effect=original?.type==="Income"?(original.amount):original?.type==="Expense"?-original.amount:0;
+                  saveWallet({...wallet,accounts:wallet.accounts.map(account=>account.id===original?.accountId?{...account,balance:account.balance-effect}:account),accountTransactions:wallet.accountTransactions.filter(transaction=>transaction.id!==editing.id)});
+                }
+                onNotice(`${editing.description} deleted`);
+                setEditing(null);
+              }}><Trash2/>Delete transaction</button>
+            </div>
+          </form>
+        </section>
+      </div>}
     </section>
   );
 }
@@ -661,98 +721,142 @@ function BudgetPage({ onAdd, onNotice }: Omit<Props, "page">) {
 function SavingsPage({ onAdd, onNotice }: Omit<Props, "page">) {
   const [goals,setGoals]=useFirestoreState<string[][]>("savingsGoals",[]);
   const [editingGoal,setEditingGoal]=useState<{goal:string[];index:number}|null>(null);
+  const [contributingGoal,setContributingGoal]=useState<{goal:string[];index:number}|null>(null);
+  const [addingGoal,setAddingGoal]=useState(false);
+  const parseGoal=(goal:string[])=>{
+    const current=numericAmount(goal[2]),target=Math.max(1,numericAmount(goal[3])),planned=numericAmount(goal[5]);
+    let history:Array<{id:number;date:string;amount:number;account:string;notes:string}>=[];
+    try{history=JSON.parse(goal[7]||"[]")}catch{history=[]}
+    return {
+      name:goal[0]||"Savings goal",
+      progress:Math.min(100,Math.round(current/target*100)),
+      current,
+      target,
+      date:goal[4]||"",
+      planned,
+      forecast:goal[6]||"Not forecasted",
+      history,
+    };
+  };
+  const saveGoal=(index:number,values:{name:string;current:number;target:number;date:string;planned:number;forecast?:string;history?:Array<{id:number;date:string;amount:number;account:string;notes:string}>})=>{
+    const target=Math.max(1,values.target),progress=Math.min(100,Math.round(values.current/target*100));
+    const record=[values.name,String(progress),peso(values.current),peso(target),values.date,peso(values.planned),values.forecast||"On track",JSON.stringify(values.history??[])];
+    setGoals(items=>items.map((goal,i)=>i===index?record:goal));
+    return record;
+  };
+  const addGoal=(values:{name:string;current:number;target:number;date:string;planned:number})=>{
+    const target=Math.max(1,values.target),progress=Math.min(100,Math.round(values.current/target*100));
+    const record=[values.name,String(progress),peso(values.current),peso(target),values.date,peso(values.planned),"On track",JSON.stringify([])];
+    setGoals(items=>[record,...items]);
+    onNotice(`${values.name} savings goal added`);
+    setAddingGoal(false);
+  };
+  const parsedGoals=goals.map(parseGoal);
+  const totalSaved=parsedGoals.reduce((sum,goal)=>sum+goal.current,0);
+  const totalTarget=parsedGoals.reduce((sum,goal)=>sum+goal.target,0);
+  const monthlyPlan=parsedGoals.reduce((sum,goal)=>sum+goal.planned,0);
+  const allHistory=parsedGoals.flatMap(goal=>goal.history.map(record=>({...record,goal:goal.name}))).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
   return (
-    <section className="feature-page">
+    <section className="feature-page savings-redesign">
       <PageHead
         title="Savings"
         description="Goal progress, contribution plans, and completion forecasts."
         action="Add savings goal"
-        onAdd={onAdd}
+        onAdd={()=>setAddingGoal(true)}
       />
-      <div className="metric-strip three">
-        <div>
-          <span>Total savings</span>
-          {money("₱0.00")}
-        </div>
-        <div>
-          <span>This month</span>
-          {money("₱0.00", "positive")}
-        </div>
-        <div>
-          <span>Active goals</span>
-          {money("0")}
-        </div>
+      <div className="savings-summary-grid">
+        <article className="surface"><span><Target/></span><div><small>Total saved</small><b className="positive">{peso(totalSaved)}</b><em>{totalTarget ? `${Math.round(totalSaved/totalTarget*100)}% of total target` : "No target yet"}</em></div></article>
+        <article className="surface"><span><Gauge/></span><div><small>Total target</small><b>{peso(totalTarget)}</b><em>{parsedGoals.length} active goals</em></div></article>
+        <article className="surface"><span><CalendarDays/></span><div><small>Planned contribution</small><b>{peso(monthlyPlan)}</b><em>Next scheduled savings</em></div></article>
       </div>
       <div className="savings-layout">
-        <div className="goal-stack">
-          {goals.map((g, i) => (
-            <article className="surface goal-module" key={g[0]}>
+        <div className="goal-stack savings-goal-stack">
+          {parsedGoals.map((goal, i) => (
+            <article className="surface goal-module savings-goal-card" key={`${goal.name}-${i}`}>
               <div className="goal-head">
-                <button className="goal-info-card clickable-row" type="button" onClick={()=>setEditingGoal({goal:g,index:i})} aria-label={`Open ${g[0]} goal`}>
+                <button className="goal-info-card clickable-row" type="button" onClick={()=>setEditingGoal({goal:goals[i],index:i})} aria-label={`Open ${goal.name} goal`}>
                   <span className={`goal-icon g${i}`}>
                     <Target />
                   </span>
                   <span>
-                    <h3>{g[0]}</h3>
-                    <b className={i ? "orange" : "positive"}>{g[1]}%</b>
+                    <h3>{goal.name}</h3>
+                    <small>Target date · {goal.date || "Not set"}</small>
                   </span>
                 </button>
+                <b className={goal.progress >= 100 ? "positive" : goal.progress >= 70 ? "orange" : ""}>{goal.progress}%</b>
                 <button
-                  className="outline"
-                  onClick={() => onNotice(`Contribution started for ${g[0]}`)}
+                  className="primary"
+                  onClick={() => setContributingGoal({goal:goals[i],index:i})}
                 >
+                  <Plus/>
                   Contribute
                 </button>
               </div>
               <div className="goal-track">
-                <i style={{ width: `${g[1]}%` }} />
+                <i style={{ width: `${goal.progress}%` }} />
               </div>
               <div className="goal-stats">
                 <div>
                   <span>Current</span>
-                  <b>{g[2]}</b>
+                  <b>{peso(goal.current)}</b>
                 </div>
                 <div>
                   <span>Target</span>
-                  <b>{g[3]}</b>
+                  <b>{peso(goal.target)}</b>
                 </div>
                 <div>
-                  <span>Target date</span>
-                  <b>{g[4]}</b>
+                  <span>Remaining</span>
+                  <b>{peso(Math.max(0,goal.target-goal.current))}</b>
                 </div>
                 <div>
                   <span>Next contribution</span>
-                  <b>{g[5]}</b>
+                  <b>{peso(goal.planned)}</b>
                 </div>
                 <div>
                   <span>Forecast completion</span>
-                  <b>{g[6]}</b>
+                  <b>{goal.forecast}</b>
                 </div>
+              </div>
+              <div className="savings-card-actions">
+                <button className="outline" type="button" onClick={()=>setEditingGoal({goal:goals[i],index:i})}>Edit goal</button>
+                <button className="outline" type="button" onClick={()=>setContributingGoal({goal:goals[i],index:i})}>Add contribution</button>
               </div>
             </article>
           ))}
+          {!goals.length&&<div className="surface planning-empty"><Target/><b>No savings goals yet</b><span>Add your first goal and track every contribution here.</span><button className="primary" onClick={()=>setAddingGoal(true)}><Plus/>Add savings goal</button></div>}
         </div>
         <aside className="surface history">
           <div className="surface-title">
             <b>Contribution history</b>
           </div>
-          {([] as string[][]).map((x) => (
+          {allHistory.slice(0,12).map((x) => (
             <button
-              key={x[0] + x[1]}
-              onClick={() => onNotice(`${x[0]} contribution selected`)}
+              key={`${x.goal}-${x.id}`}
+              onClick={() => onNotice(`${x.goal} contribution selected`)}
             >
               <span>
-                <b>{x[0]}</b>
-                <small>{x[1]}</small>
+                <b>{x.goal}</b>
+                <small>{x.date} · {x.account || "No account"}</small>
               </span>
-              <strong>{x[2]}</strong>
+              <strong>{peso(x.amount)}</strong>
             </button>
-          ))}<p className="empty-card">No contributions recorded.</p>
+          ))}
+          {!allHistory.length&&<p className="empty-card">No contributions recorded.</p>}
         </aside>
       </div>
-      {editingGoal&&<div className="modal-backdrop" onMouseDown={()=>setEditingGoal(null)}><section className="modal" role="dialog" aria-modal="true" onMouseDown={event=>event.stopPropagation()}><div className="modal-head"><div><h2>Edit savings goal</h2><p>Update the goal or remove it from your savings plan.</p></div><button className="icon-button" aria-label="Close" onClick={()=>setEditingGoal(null)}><X/></button></div><form onSubmit={event=>{event.preventDefault();const form=new FormData(event.currentTarget);const current=Number(form.get('current')),target=Number(form.get('target')),updated=[String(form.get('name')),String(Math.min(100,Math.round(current/Math.max(target,1)*100))),`₱${current.toLocaleString()}`,`₱${target.toLocaleString()}`,String(form.get('date')),`₱${Number(form.get('contribution')).toLocaleString()}`,editingGoal.goal[6]];setGoals(items=>items.map((goal,index)=>index===editingGoal.index?updated:goal));onNotice(`${updated[0]} updated`);setEditingGoal(null)}}><label>Goal name<input name="name" required defaultValue={editingGoal.goal[0]}/></label><div className="form-grid"><label>Current amount<input name="current" type="number" min="0" required defaultValue={Number(editingGoal.goal[2].replace(/[^0-9.]/g,''))}/></label><label>Target amount<input name="target" type="number" min="1" required defaultValue={Number(editingGoal.goal[3].replace(/[^0-9.]/g,''))}/></label></div><div className="form-grid"><label>Target date<input name="date" required defaultValue={editingGoal.goal[4]}/></label><label>Planned contribution<input name="contribution" type="number" min="0" defaultValue={Number(editingGoal.goal[5].replace(/[^0-9.]/g,''))}/></label></div><div className="record-edit-actions"><button className="primary" type="submit">Save changes</button><button className="danger-outline" type="button" onClick={()=>{setGoals(items=>items.filter((_,index)=>index!==editingGoal.index));onNotice(`${editingGoal.goal[0]} deleted`);setEditingGoal(null)}}><Trash2/>Delete goal</button></div></form></section></div>}
+      {addingGoal&&<SavingsGoalModal title="Add savings goal" onClose={()=>setAddingGoal(false)} onSave={addGoal}/>}
+      {editingGoal&&<SavingsGoalModal title="Edit savings goal" goal={parseGoal(editingGoal.goal)} onClose={()=>setEditingGoal(null)} onSave={(values)=>{const updated=saveGoal(editingGoal.index,{...values,history:parseGoal(editingGoal.goal).history});onNotice(`${updated[0]} updated`);setEditingGoal(null)}} onDelete={()=>{setGoals(items=>items.filter((_,index)=>index!==editingGoal.index));onNotice(`${editingGoal.goal[0]} deleted`);setEditingGoal(null)}}/>}
+      {contributingGoal&&<SavingsContributionModal goal={parseGoal(contributingGoal.goal)} onClose={()=>setContributingGoal(null)} onSave={(values)=>{const goal=parseGoal(contributingGoal.goal);const history=[...goal.history,{id:Date.now(),...values}];const updated=saveGoal(contributingGoal.index,{...goal,current:goal.current+values.amount,history});onNotice(`${peso(values.amount)} added to ${updated[0]}`);setContributingGoal(null)}}/>}
     </section>
   );
+}
+
+function SavingsGoalModal({title,goal,onClose,onSave,onDelete}:{title:string;goal?:{name:string;current:number;target:number;date:string;planned:number;forecast:string};onClose:()=>void;onSave:(values:{name:string;current:number;target:number;date:string;planned:number})=>void;onDelete?:()=>void}) {
+  return <div className="modal-backdrop" onMouseDown={onClose}><section className="modal savings-modal" role="dialog" aria-modal="true" onMouseDown={event=>event.stopPropagation()}><div className="modal-head"><div><h2>{title}</h2><p>Set the target, current saved amount, and planned contribution.</p></div><button className="icon-button" aria-label="Close" onClick={onClose}><X/></button></div><form onSubmit={event=>{event.preventDefault();const form=new FormData(event.currentTarget);onSave({name:String(form.get("name")),current:Number(form.get("current")||0),target:Number(form.get("target")||0),date:String(form.get("date")||""),planned:Number(form.get("planned")||0)})}}><label>Goal name<input name="name" required autoFocus defaultValue={goal?.name??""} placeholder="Emergency fund, travel, laptop..." /></label><div className="form-grid"><label>Current amount<input name="current" type="number" min="0" step="0.01" inputMode="decimal" required defaultValue={goal?.current??0}/></label><label>Target amount<input name="target" type="number" min="1" step="0.01" inputMode="decimal" required defaultValue={goal?.target??0}/></label></div><div className="form-grid"><label>Target date<input name="date" type="date" defaultValue={goal?.date??""}/></label><label>Planned contribution<input name="planned" type="number" min="0" step="0.01" inputMode="decimal" defaultValue={goal?.planned??0}/></label></div><div className="record-edit-actions"><button className="primary" type="submit">Save goal</button>{onDelete&&<button className="danger-outline" type="button" onClick={onDelete}><Trash2/>Delete goal</button>}</div></form></section></div>
+}
+
+function SavingsContributionModal({goal,onClose,onSave}:{goal:{name:string;planned:number};onClose:()=>void;onSave:(values:{date:string;amount:number;account:string;notes:string})=>void}) {
+  return <div className="modal-backdrop" onMouseDown={onClose}><section className="modal savings-modal" role="dialog" aria-modal="true" onMouseDown={event=>event.stopPropagation()}><div className="modal-head"><div><h2>Contribute to {goal.name}</h2><p>Record money added to this savings goal.</p></div><button className="icon-button" aria-label="Close" onClick={onClose}><X/></button></div><form onSubmit={event=>{event.preventDefault();const form=new FormData(event.currentTarget);onSave({date:String(form.get("date")),amount:Number(form.get("amount")||0),account:String(form.get("account")||""),notes:String(form.get("notes")||"")})}}><div className="form-grid"><label>Contribution amount<input name="amount" type="number" min="0.01" step="0.01" inputMode="decimal" required autoFocus defaultValue={goal.planned||""}/></label><label>Date<input name="date" type="date" required defaultValue={new Date().toISOString().slice(0,10)}/></label></div><label>Source account<ConnectedAccountSelect name="account" required/></label><label>Notes<textarea name="notes" rows={3} placeholder="Optional note" /></label><button className="primary submit" type="submit"><Plus/>Save contribution</button></form></section></div>
 }
 
 function ReportsPage({ onNotice }: Omit<Props, "page" | "onAdd">) {

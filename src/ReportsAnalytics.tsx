@@ -29,6 +29,7 @@ function getRangeDates(range:PnlRange,customFrom:string,customTo:string){
 const inDateRange=(value:string|undefined,from:string,to:string)=>Boolean(value&&value>=from&&value<=to)
 const subcategoryName=(category='Uncategorized')=>category.includes('/')?category.split('/').map(part=>part.trim()).filter(Boolean).at(-1)||category:category
 const categoryParts=(category='Uncategorized')=>{const parts=category.split('/').map(part=>part.trim()).filter(Boolean);return{parent:parts[0]||'Uncategorized',subcategory:parts.length>1?parts.at(-1)??null:null}}
+const isCreditCardCategory=(category='')=>categoryParts(category).parent.toLowerCase()==='credit card'
 const groupedExpenseRows=(items:Array<{category:string;amount:number}>):ExpenseCategoryGroup[]=>{
   const groups=new Map<string,{total:number;subcategories:Map<string,number>}>()
   items.forEach(item=>{
@@ -70,7 +71,7 @@ export default function ReportsAnalytics({onNotice}:Props){
     const accountPnl=(wallet.accountTransactions??[]).filter(item=>inDateRange(item.date,pnlRangeDates.from,pnlRangeDates.to))
     const cardPnl=includedCardTransactions.filter(item=>inDateRange(item.transactionDate||item.postedDate,pnlRangeDates.from,pnlRangeDates.to)&&item.status?.toLowerCase()==='posted')
     const pnlIncome=accountPnl.filter(item=>item.type==='Income').reduce((sum,item)=>sum+Number(item.amount||0),0)
-    const pnlExpenseItems=[...accountPnl.filter(item=>item.type==='Expense').map(item=>({category:item.category||'Uncategorized',amount:Number(item.amount||0)})),...cardPnl.filter(item=>['purchase','installment','fee','interest'].includes(item.type.toLowerCase())).map(item=>({category:item.category||'Uncategorized',amount:Number(item.amount||0)}))]
+    const pnlExpenseItems=[...accountPnl.filter(item=>item.type==='Expense').map(item=>({category:item.category||'Uncategorized',amount:Number(item.amount||0)})),...cardPnl.filter(item=>['purchase','installment','fee','interest'].includes(item.type.toLowerCase())).map(item=>({category:item.category||'Uncategorized',amount:Number(item.amount||0)}))].filter(item=>!isCreditCardCategory(item.category))
     const pnlExpenses=pnlExpenseItems.reduce((sum,item)=>sum+item.amount,0)
     const operatingExpenseItems=pnlExpenseItems
     const operatingExpensesByCategory=groupedExpenseRows(operatingExpenseItems)

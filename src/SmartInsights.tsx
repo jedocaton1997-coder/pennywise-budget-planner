@@ -4,7 +4,7 @@ import { useFirestoreState } from './hooks/useFirestoreState'
 import { useWalletSnapshot } from './hooks/useWalletSnapshot'
 import type { CategoryBudget } from './domain/planningEngine'
 import { connectBudgetsToTransactions } from './utils/budgetSpending'
-import { billUsesIncludedCard, filterIncludedCardTransactions } from './utils/netBalanceFilters'
+import { billUsesActiveCard, filterIncludedCardTransactions } from './utils/netBalanceFilters'
 
 type Basis='Actual data'|'Forecast estimate'
 type Insight={id:number;title:string;detail:string;evidence:string;basis:Basis;tone:'warning'|'positive'|'info';icon:typeof Receipt;action:string}
@@ -38,7 +38,7 @@ export default function SmartInsights({onNotice}:Props){
     else if(budgetRisk&&budgetRisk.actual/budgetRisk.allocated>=.75)generated.push({id:2,title:`${budgetRisk.subcategory||budgetRisk.name} is nearing its limit`,detail:`This category has used ${Math.round(budgetRisk.actual/budgetRisk.allocated*100)}% of its budget.`,evidence:'Actual spending compared with budget allocation.',basis:'Actual data',tone:'warning',icon:ShoppingBasket,action:'Review category'})
     if(expenses>income&&income>0)generated.push({id:3,title:'Expenses are higher than income this month',detail:`Monthly expenses are ${money(expenses-income)} above recorded income.`,evidence:'Posted account and credit-card transactions for the current month.',basis:'Actual data',tone:'warning',icon:Receipt,action:'Open transactions'})
     if(income>expenses&&income>0)generated.push({id:4,title:'Positive monthly cash flow',detail:`Recorded income is ahead of expenses by ${money(income-expenses)} this month.`,evidence:'Current-month posted transactions.',basis:'Actual data',tone:'positive',icon:TrendingUp,action:'View report'})
-    const upcomingBills=bills.filter(bill=>billUsesIncludedCard(bill,wallet.cards??[])&&!['Paid','Skipped'].includes(bill.status)).sort((a,b)=>a.dueDate.localeCompare(b.dueDate))
+    const upcomingBills=bills.filter(bill=>billUsesActiveCard(bill,wallet.cards??[])&&!['Paid','Skipped'].includes(bill.status)).sort((a,b)=>a.dueDate.localeCompare(b.dueDate))
     const nextBill=upcomingBills[0]
     if(nextBill)generated.push({id:5,title:`${nextBill.name.replace(/\s+statement$/i,'')} is upcoming`,detail:`${money(Number(nextBill.amount||0))} is scheduled on ${nextBill.dueDate}.`,evidence:'Bills & Payments schedule.',basis:'Forecast estimate',tone:'info',icon:CalendarClock,action:'Open bill'})
     const available=(wallet.accounts??[]).reduce((sum,account)=>sum+Number(account.balance||0),0)

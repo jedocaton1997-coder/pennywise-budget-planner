@@ -5737,7 +5737,7 @@ textarea::placeholder{
 }
 
 .budget-page-redesign .budget-summary-redesign{
-  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  grid-template-columns:repeat(5,minmax(0,1fr))!important;
   gap:16px!important;
 }
 
@@ -5761,7 +5761,9 @@ textarea::placeholder{
 }
 
 .budget-page-redesign .budget-summary-redesign b{
-  font-size:23px!important;
+  font-size:21px!important;
+  white-space:nowrap!important;
+  font-variant-numeric:tabular-nums!important;
 }
 
 .budget-page-redesign .budget-summary-redesign em{
@@ -5997,6 +5999,38 @@ textarea::placeholder{
   font-weight:800!important;
 }
 
+.budget-actual-button{
+  width:max-content!important;
+  max-width:100%!important;
+  min-height:38px!important;
+  padding:0 9px!important;
+  border:1px solid transparent!important;
+  border-radius:9px!important;
+  background:transparent!important;
+  color:var(--ink)!important;
+  font-size:14px!important;
+  font-weight:700!important;
+  font-variant-numeric:tabular-nums!important;
+  white-space:nowrap!important;
+  cursor:pointer!important;
+}
+
+.budget-actual-button:hover,
+.budget-actual-button:focus-visible{
+  border-color:#b9dccb!important;
+  background:#edf8f3!important;
+  color:#087e5c!important;
+  outline:none!important;
+}
+
+.budget-table-progress-cell{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) 36px!important;
+  align-items:center!important;
+  gap:8px!important;
+  min-width:0!important;
+}
+
 .budget-page-redesign .budget-table-progress{
   grid-template-columns:auto minmax(70px,1fr)!important;
   justify-content:start!important;
@@ -6005,6 +6039,185 @@ textarea::placeholder{
 .budget-page-redesign .budget-table-progress i{
   height:6px!important;
 }
+
+.budget-row-menu-button{
+  width:36px!important;
+  height:36px!important;
+  min-width:36px!important;
+  min-height:36px!important;
+  padding:0!important;
+  display:grid!important;
+  place-items:center!important;
+  border:1px solid var(--border)!important;
+  border-radius:9px!important;
+  background:#fff!important;
+  color:#50655d!important;
+  cursor:pointer!important;
+}
+
+.budget-row-menu-button:hover,
+.budget-row-menu-button:focus-visible{
+  border-color:#8fc8ad!important;
+  background:#f2faf6!important;
+  color:#087e5c!important;
+  outline:none!important;
+}
+
+.budget-row-menu-button svg{
+  width:17px!important;
+  height:17px!important;
+}
+
+.budget-row-menu-layer{
+  position:fixed!important;
+  inset:0!important;
+  z-index:12000!important;
+}
+
+.budget-row-menu-popover{
+  position:fixed!important;
+  width:190px!important;
+  padding:6px!important;
+  display:grid!important;
+  gap:3px!important;
+  border:1px solid var(--border)!important;
+  border-radius:12px!important;
+  background:#fff!important;
+  box-shadow:0 16px 38px rgba(21,51,57,.18)!important;
+}
+
+.budget-row-menu-popover button{
+  min-height:40px!important;
+  padding:0 11px!important;
+  border:0!important;
+  border-radius:8px!important;
+  background:transparent!important;
+  color:var(--ink)!important;
+  text-align:left!important;
+  cursor:pointer!important;
+}
+
+.budget-row-menu-popover button:hover,
+.budget-row-menu-popover button:focus-visible{
+  background:#edf8f3!important;
+  outline:none!important;
+}
+
+.budget-row-menu-popover button.danger{
+  color:#d94338!important;
+}
+
+.budget-row-menu-popover button.danger:hover,
+.budget-row-menu-popover button.danger:focus-visible{
+  background:#fff0ed!important;
+}
+
+.budget-transactions-modal{
+  display:grid!important;
+  gap:14px!important;
+  min-width:0!important;
+  width:100%!important;
+  overflow-x:hidden!important;
+}
+
+.modal.budget-transactions-dialog{
+  width:min(880px,calc(100vw - 32px))!important;
+  max-width:880px!important;
+  max-height:calc(100dvh - 32px)!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+}
+
+.budget-transaction-summary{
+  display:grid!important;
+  grid-template-columns:repeat(3,minmax(0,1fr))!important;
+  gap:10px!important;
+}
+
+.budget-transaction-summary>span{
+  min-height:76px!important;
+  padding:12px!important;
+  display:grid!important;
+  align-content:center!important;
+  gap:5px!important;
+  border:1px solid var(--border)!important;
+  border-radius:12px!important;
+  background:#f8fbf9!important;
+}
+
+.budget-transaction-summary small,
+.budget-transaction-row small{
+  color:var(--muted)!important;
+  font-size:11px!important;
+}
+
+.budget-transaction-summary b{
+  font-size:16px!important;
+  font-variant-numeric:tabular-nums!important;
+}
+
+.budget-transaction-head,
+.budget-transaction-row{
+  display:grid!important;
+  grid-template-columns:minmax(92px,.65fr) minmax(160px,1.4fr) minmax(140px,1fr) minmax(105px,.7fr)!important;
+  gap:12px!important;
+  align-items:center!important;
+  min-width:0!important;
+}
+
+.budget-transaction-head{
+  min-height:38px!important;
+  padding:0 12px!important;
+  border-radius:10px!important;
+  background:#f4f8f6!important;
+  color:var(--muted)!important;
+  font-size:10px!important;
+  text-transform:uppercase!important;
+  letter-spacing:.05em!important;
+}
+
+.budget-transaction-list{
+  max-height:min(430px,50vh)!important;
+  overflow-y:auto!important;
+  display:grid!important;
+  gap:8px!important;
+}
+
+.budget-transaction-row{
+  min-height:62px!important;
+  padding:10px 12px!important;
+  border:1px solid var(--border)!important;
+  border-radius:12px!important;
+  background:#fff!important;
+}
+
+.budget-transaction-row>span:nth-child(2){display:grid!important;gap:3px!important;min-width:0!important}
+.budget-transaction-row>span:nth-child(2) b{overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
+.budget-transaction-row>span:nth-child(3){min-width:0!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
+.budget-transaction-row>strong{text-align:right!important;white-space:nowrap!important;font-variant-numeric:tabular-nums!important}
+
+.budget-transaction-total{
+  min-height:48px!important;
+  padding:0 14px!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:space-between!important;
+  border-radius:12px!important;
+  background:#edf8f3!important;
+  color:#087e5c!important;
+}
+
+.budget-transaction-empty{
+  min-height:150px!important;
+  display:grid!important;
+  place-items:center!important;
+  align-content:center!important;
+  gap:7px!important;
+  color:var(--muted)!important;
+  text-align:center!important;
+}
+
+.budget-transaction-empty svg{width:26px!important;height:26px!important;color:#16805b!important}
 
 .budget-total-row{
   background:#fbfdfc!important;
@@ -6060,7 +6273,7 @@ textarea::placeholder{
 
 @media(max-width:1180px){
   .budget-page-redesign .budget-summary-redesign{
-    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
   }
   .budget-page-redesign .budget-table-card{
     overflow-x:auto!important;
@@ -6072,6 +6285,11 @@ textarea::placeholder{
 }
 
 @media(max-width:720px){
+  .modal.budget-transactions-dialog{
+    width:calc(100vw - 24px)!important;
+    max-height:calc(100dvh - 24px)!important;
+    padding:16px!important;
+  }
   .budget-page-redesign .budget-redesign-shell{
     padding:16px!important;
   }
@@ -6085,6 +6303,25 @@ textarea::placeholder{
   }
   .budget-sort-select{
     width:100%!important;
+  }
+  .budget-transaction-summary{
+    grid-template-columns:1fr!important;
+  }
+  .budget-transaction-head{
+    display:none!important;
+  }
+  .budget-transaction-row{
+    grid-template-columns:1fr auto!important;
+    gap:7px 12px!important;
+  }
+  .budget-transaction-row>span:nth-child(2),
+  .budget-transaction-row>span:nth-child(3){
+    grid-column:1!important;
+  }
+  .budget-transaction-row>strong{
+    grid-column:2!important;
+    grid-row:1 / span 3!important;
+    align-self:center!important;
   }
   .budget-chart-card{padding:18px 14px 16px!important}
   .budget-chart-title{align-items:flex-start!important;flex-direction:column!important}
@@ -6631,4 +6868,461 @@ button :is(span, b, strong, small),
   .actual-amount
 ){
   font-weight:700!important;
+}
+
+/* Editorial finance theme
+   Adapted from the approved monochrome dashboard reference. This final layer
+   intentionally changes presentation only; finance data and component flow
+   remain owned by their existing modules. */
+:root{
+  --editorial-canvas:#f5f4f0;
+  --editorial-sidebar:#efeee9;
+  --editorial-surface:#ffffff;
+  --editorial-surface-muted:#f8f7f3;
+  --editorial-ink:#171715;
+  --editorial-muted:#74736f;
+  --editorial-border:#e2e0da;
+  --editorial-border-strong:#d5d2ca;
+  --editorial-positive:#278668;
+  --editorial-negative:#d9574f;
+  --editorial-warning:#b87419;
+  --editorial-number-font:"SFMono-Regular","Roboto Mono","IBM Plex Mono",Menlo,Monaco,Consolas,"Liberation Mono",monospace;
+  --glass-bg:var(--editorial-surface);
+  --glass-bg-strong:var(--editorial-surface);
+  --glass-border:var(--editorial-border);
+  --glass-line:var(--editorial-border);
+  --glass-shadow:0 1px 2px rgba(24,24,20,.035),0 8px 24px rgba(24,24,20,.035);
+  --glass-shadow-hover:0 2px 4px rgba(24,24,20,.045),0 12px 30px rgba(24,24,20,.055);
+  --glass-green:var(--editorial-positive);
+  --glass-green-2:#359a78;
+  --glass-ink:var(--editorial-ink);
+  --glass-muted:var(--editorial-muted);
+  --glass-coral:var(--editorial-negative);
+  --surface:var(--editorial-surface);
+  --border:var(--editorial-border);
+  --line:var(--editorial-border);
+  --ink:var(--editorial-ink);
+  --muted:var(--editorial-muted);
+  --green:var(--editorial-positive);
+  --coral:var(--editorial-negative);
+  --ivory:var(--editorial-canvas);
+  --shadow-surface:var(--glass-shadow);
+  --shadow-hover:var(--glass-shadow-hover);
+}
+
+html:not([data-theme="dark"]){
+  background:var(--editorial-canvas)!important;
+}
+
+html:not([data-theme="dark"]) body{
+  color:var(--editorial-ink)!important;
+  background:var(--editorial-canvas)!important;
+}
+
+html:not([data-theme="dark"]) body::before,
+html:not([data-theme="dark"]) body::after{
+  display:none!important;
+}
+
+html:not([data-theme="dark"]) .app-shell,
+html:not([data-theme="dark"]) .app-shell>main{
+  background:transparent!important;
+}
+
+/* Warm, quiet navigation with one unambiguous selected state. */
+html:not([data-theme="dark"]) .sidebar{
+  border:1px solid var(--editorial-border)!important;
+  background:var(--editorial-sidebar)!important;
+  box-shadow:4px 0 18px rgba(24,24,20,.035)!important;
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
+}
+
+html:not([data-theme="dark"]) .brand,
+html:not([data-theme="dark"]) .sidebar button{
+  color:#55544f!important;
+}
+
+html:not([data-theme="dark"]) .brand-mark{
+  border:1px solid var(--editorial-border-strong)!important;
+  background:#fff!important;
+  color:var(--editorial-ink)!important;
+  box-shadow:0 2px 6px rgba(24,24,20,.06)!important;
+}
+
+html:not([data-theme="dark"]) .sidebar button:hover{
+  color:var(--editorial-ink)!important;
+  background:rgba(255,255,255,.62)!important;
+  box-shadow:none!important;
+}
+
+html:not([data-theme="dark"]) .sidebar nav button.active{
+  color:var(--editorial-ink)!important;
+  background:#fff!important;
+  border:1px solid var(--editorial-border)!important;
+  box-shadow:0 1px 3px rgba(24,24,20,.06)!important;
+}
+
+html:not([data-theme="dark"]) .sidebar-foot{
+  border:1px solid var(--editorial-border)!important;
+  background:rgba(255,255,255,.46)!important;
+  box-shadow:none!important;
+  backdrop-filter:none!important;
+}
+
+html:not([data-theme="dark"]) .sidebar-foot .profile{
+  border-color:var(--editorial-border)!important;
+}
+
+/* Opaque surfaces replace the previous translucent glass treatment. */
+html:not([data-theme="dark"]) :is(
+  .surface,
+  .panel,
+  .planning-card,
+  .wallet-hero,
+  .statement-overview-inline,
+  .bank-account-list,
+  .metric-strip,
+  .planning-summary,
+  .income-summary,
+  .expense-summary,
+  .credit-overview,
+  .bill-overview,
+  .report-metrics,
+  .calendar-summary,
+  .dashboard-kpis article,
+  .fd-panel,
+  .fd-kpis article,
+  .fd-mini article,
+  .feature-note,
+  .forecast,
+  .category-manager,
+  .command-hero-card,
+  .command-kpi,
+  .command-panel,
+  .command-mini-card,
+  .cfp-summary-card,
+  .cfp-plan-card,
+  .statistic-summary-card,
+  .wallet-summary-strip,
+  .settings-summary-card
+){
+  border-color:var(--editorial-border)!important;
+  background:var(--editorial-surface)!important;
+  box-shadow:var(--glass-shadow)!important;
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
+}
+
+html:not([data-theme="dark"]) :is(
+  .surface,
+  .planning-card,
+  .dashboard-kpis article,
+  .fd-kpis article,
+  .advanced-dashboard-summary>button,
+  .command-kpi,
+  .command-mini-card
+):hover{
+  border-color:var(--editorial-border-strong)!important;
+  box-shadow:var(--glass-shadow-hover)!important;
+}
+
+html:not([data-theme="dark"]) :is(
+  .surface-title,
+  .panel-title,
+  .modal-head,
+  .account-list-head,
+  .income-list-head,
+  .expense-list-head,
+  .table-head,
+  .history-head,
+  .upcoming-table-head,
+  .account-statement-head,
+  .budget-table-head,
+  .bills-list-head
+){
+  border-color:var(--editorial-border)!important;
+  background:var(--editorial-surface)!important;
+  backdrop-filter:none!important;
+}
+
+html:not([data-theme="dark"]) :is(
+  .data-panel,
+  .card-history,
+  .account-statement,
+  .budget-list-module .planning-list
+){
+  border-color:var(--editorial-border)!important;
+  background:var(--editorial-surface)!important;
+  box-shadow:var(--glass-shadow)!important;
+}
+
+html:not([data-theme="dark"]) :is(
+  .data-row,
+  .history-row,
+  .income-list>button,
+  .expense-list>button,
+  .dashboard-upcoming>button,
+  .bank-account-list>button,
+  .fd-upcoming>button,
+  .budget-table-row,
+  .bill-commitment-row,
+  .account-statement-row,
+  .biweekly-row
+){
+  border-color:var(--editorial-border)!important;
+  background:var(--editorial-surface)!important;
+}
+
+html:not([data-theme="dark"]) :is(
+  .data-row,
+  .history-row,
+  .income-list>button,
+  .expense-list>button,
+  .dashboard-upcoming>button,
+  .bank-account-list>button,
+  .fd-upcoming>button,
+  .budget-table-row,
+  .bill-commitment-row,
+  .account-statement-row,
+  .biweekly-row
+):hover{
+  background:var(--editorial-surface-muted)!important;
+}
+
+/* Reference-inspired metric labels and financial numerals. */
+:is(
+  th,
+  .table-head,
+  .history-head,
+  .upcoming-table-head,
+  .budget-table-head,
+  .bills-list-head,
+  .account-statement-head,
+  .income-table-head,
+  .expense-columns,
+  .biweekly-list-head,
+  .summary-label,
+  .wallet-summary-metric>small,
+  .command-kpi small,
+  .command-mini-card small,
+  .report-metrics small,
+  .statistic-summary-card small
+){
+  font-family:var(--editorial-number-font)!important;
+  font-size:10px!important;
+  font-weight:500!important;
+  letter-spacing:.055em!important;
+  line-height:1.3!important;
+  text-transform:uppercase!important;
+}
+
+:is(
+  .metric-strip,
+  .planning-summary,
+  .income-summary,
+  .expense-summary,
+  .credit-overview,
+  .bill-overview,
+  .report-metrics,
+  .calendar-summary,
+  .dashboard-kpis,
+  .fd-kpis,
+  .wallet-metrics,
+  .wallet-summary-strip,
+  .net-worth-summary-card,
+  .budget-edit-summary,
+  .account-statement-summary,
+  .receivable-progress-summary,
+  .budget-summary-grid,
+  .budget-summary-redesign,
+  .monthly-budget-lead,
+  .cfp-summary-grid,
+  .statistics-summary-grid,
+  .credit-card-spending-summary,
+  .command-kpi-grid,
+  .command-mini-grid,
+  .command-total-strip
+) :is(b,strong),
+:is(
+  .planning-primary-amount,
+  .money-value,
+  .amount,
+  .total,
+  .positive,
+  .negative,
+  .actual-amount,
+  .bill-row-amount,
+  .bill-column-amount,
+  .commit-total,
+  .credit-total,
+  .budget-transaction-total,
+  .timesheet-total-row b,
+  .cfp-plan-amounts b,
+  .cfp-total-row b
+){
+  font-family:var(--editorial-number-font)!important;
+  font-variant-numeric:tabular-nums lining-nums!important;
+  font-feature-settings:"tnum" 1,"zero" 1!important;
+  letter-spacing:-.04em!important;
+}
+
+:is(
+  .history-row,
+  .account-statement-row,
+  .bill-commitment-row,
+  .budget-table-row,
+  .biweekly-row,
+  .dashboard-upcoming button,
+  .budget-income-row,
+  .budget-expense-row,
+  .receivable-card-v2,
+  .installment-schedule,
+  .receivable-history,
+  .category-manager-row
+) :is(strong,b):not(:first-child){
+  font-variant-numeric:tabular-nums lining-nums;
+}
+
+/* Restrained semantic accents from the reference palette. */
+:is(.positive,.good,.income,.on-track,.success,.variance-positive){
+  color:var(--editorial-positive)!important;
+}
+
+:is(.negative,.overdue,.critical,.variance-negative,.expense,.expenses){
+  color:var(--editorial-negative)!important;
+}
+
+html:not([data-theme="dark"]) :is(input,select,textarea){
+  border-color:var(--editorial-border-strong)!important;
+  background:#fff!important;
+  box-shadow:inset 0 1px rgba(24,24,20,.02)!important;
+  backdrop-filter:none!important;
+}
+
+html:not([data-theme="dark"]) :is(input,select,textarea):focus{
+  border-color:#77756f!important;
+  box-shadow:0 0 0 3px rgba(23,23,21,.08)!important;
+}
+
+html:not([data-theme="dark"]) :is(button.outline,.outline,.link,.bell,.icon-button,.planning-toolbar>button){
+  border-color:var(--editorial-border-strong)!important;
+  background:#fff!important;
+  color:var(--editorial-ink)!important;
+  box-shadow:0 1px 2px rgba(24,24,20,.035)!important;
+  backdrop-filter:none!important;
+}
+
+html:not([data-theme="dark"]) :is(button.outline,.outline,.link,.bell,.icon-button,.planning-toolbar>button):hover{
+  border-color:#bbb8b0!important;
+  background:var(--editorial-surface-muted)!important;
+}
+
+html:not([data-theme="dark"]) :is(button.primary,.primary){
+  border-color:#1f7158!important;
+  background:var(--editorial-positive)!important;
+  box-shadow:0 2px 5px rgba(39,134,104,.18)!important;
+}
+
+html:not([data-theme="dark"]) :is(button.primary,.primary):hover{
+  background:#20765b!important;
+  box-shadow:0 3px 8px rgba(39,134,104,.22)!important;
+}
+
+html:not([data-theme="dark"]) .modal-backdrop{
+  background:rgba(20,20,18,.32)!important;
+  backdrop-filter:none!important;
+}
+
+html:not([data-theme="dark"]) .modal{
+  border-color:var(--editorial-border)!important;
+  background:#fff!important;
+  box-shadow:0 24px 70px rgba(20,20,18,.2)!important;
+}
+
+/* Charts stay content-driven; this only aligns labels, legends, and grids. */
+:is(
+  .chart-label,
+  .chart-legend,
+  .dashboard-chart-legend,
+  .comparison-legend,
+  .balance-trend-legend,
+  .credit-card-spending-legend
+){
+  color:var(--editorial-muted)!important;
+  font-size:11px!important;
+}
+
+html:not([data-theme="dark"]) :is(.track,.planning-progress,.goal-track,.budget-row i,.summary-progress>div>i,.fd-card>div>i){
+  background:#ebe9e3!important;
+  box-shadow:none!important;
+}
+
+@media(max-width:760px){
+  :root{
+    --glass-shadow:0 1px 2px rgba(24,24,20,.04),0 5px 16px rgba(24,24,20,.035);
+  }
+
+  html:not([data-theme="dark"]) .sidebar{
+    background:var(--editorial-sidebar)!important;
+  }
+}
+
+/* Light-sidebar clock contrast. The clock previously inherited the old
+   dark-sidebar white treatment and became unreadable on the editorial shell. */
+html:not([data-theme="dark"]) .sidebar .sidebar-clock-top .sidebar-toggle{
+  color:var(--editorial-muted)!important;
+}
+
+html:not([data-theme="dark"]) .sidebar .sidebar-clock-top .sidebar-toggle:hover{
+  color:var(--editorial-ink)!important;
+  background:rgba(255,255,255,.72)!important;
+}
+
+html:not([data-theme="dark"]) .sidebar-clock{
+  color:var(--editorial-ink)!important;
+}
+
+html:not([data-theme="dark"]) .sidebar-clock strong,
+html:not([data-theme="dark"]) .sidebar-clock strong span{
+  color:var(--editorial-ink)!important;
+}
+
+html:not([data-theme="dark"]) .sidebar-clock b{
+  color:#55544f!important;
+}
+
+html:not([data-theme="dark"]) .sidebar-clock small{
+  color:var(--editorial-muted)!important;
+}
+
+/* The financial-status banner and global actions need two rows at common
+   laptop/desktop widths. This keeps both groups in normal flow and prevents
+   the date filter and quick actions from sitting on top of the insight card. */
+@media (min-width:901px) and (max-width:1540px){
+  .dashboard-hero-header:has(.insight-only-hero){
+    grid-template-columns:minmax(0,1fr)!important;
+    align-items:start!important;
+    gap:12px!important;
+    min-height:0!important;
+  }
+
+  .dashboard-hero-header:has(.insight-only-hero) .dashboard-welcome-hero{
+    width:100%!important;
+    min-width:0!important;
+  }
+
+  .dashboard-hero-header:has(.insight-only-hero) .header-actions{
+    width:100%!important;
+    max-width:none!important;
+    min-width:0!important;
+    justify-self:stretch!important;
+    justify-content:flex-end!important;
+  }
+}
+
+@media (max-width:1100px){
+  .dashboard-hero-header:has(.insight-only-hero) .header-actions{
+    justify-content:flex-start!important;
+  }
 }

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { AlertTriangle, CalendarRange, Check, ChevronRight, Info, TrendingDown, TrendingUp } from 'lucide-react'
 import { useFirestoreState } from './hooks/useFirestoreState'
 import { useWalletSnapshot } from './hooks/useWalletSnapshot'
-import { billUsesIncludedCard } from './utils/netBalanceFilters'
+import { billUsesActiveCard } from './utils/netBalanceFilters'
 
 type Point={date:string;key:string;beginning:number;income:number;bills:number;expenses:number;cards:number;savings:number;ending:number;reason?:string}
 type Horizon='Seven days'|'Four weeks'|'Three months'|'Six months'|'Twelve months'
@@ -45,7 +45,7 @@ export default function CashFlowForecast(){
     const startKey=iso(dates[0])
     const endKey=iso(addDays(dates.at(-1)!,horizon==='Four weeks'?6:0))
     const events:Event[]=[
-      ...bills.filter(bill=>billUsesIncludedCard(bill,wallet.cards??[])&&!['Paid','Skipped'].includes(bill.status)).map(bill=>({date:bill.dueDate,type:/credit\s*card/i.test(bill.category)?'card':'bill' as Event['type'],amount:Number(bill.amount||0),name:bill.name})),
+      ...bills.filter(bill=>billUsesActiveCard(bill,wallet.cards??[])&&!['Paid','Skipped'].includes(bill.status)).map(bill=>({date:bill.dueDate,type:/credit\s*card/i.test(bill.category)?'card':'bill' as Event['type'],amount:Number(bill.amount||0),name:bill.name})),
       ...planning.filter(item=>!item.archived&&item.status!=='Completed').map(item=>{const type=item.type==='Income'||item.category==='Receivable collection'?'income':item.type==='Savings contribution'?'savings':'expense';return{date:item.date||item.expectedDate||item.dueDate||'',type:type as Event['type'],amount:Number(item.amount||0),name:item.name}}),
       ...savingsGoals.map(goal=>({date:goal[4]||'',type:'savings' as Event['type'],amount:Number(String(goal[5]||'').replace(/[^0-9.-]/g,''))||0,name:goal[0]})),
     ].filter(event=>event.date>=startKey&&event.date<=endKey&&event.amount>0)

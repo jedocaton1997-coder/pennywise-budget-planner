@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
+import { createPortal } from "react-dom";
 import {
   Archive,
   AlertCircle,
@@ -15,6 +16,7 @@ import {
   Filter,
   HandCoins,
   Info,
+  MoreVertical,
   Plus,
   Receipt,
   RotateCcw,
@@ -49,8 +51,23 @@ import { useCategories } from "./data/categories";
 import { ConnectedAccountSelect } from "./components/ConnectedAccountSelect";
 import { useFirestoreState } from "./hooks/useFirestoreState";
 import { useWalletSnapshot } from "./hooks/useWalletSnapshot";
-import { connectBudgetsToTransactions, type BudgetWallet } from "./utils/budgetSpending";
+import { connectBudgetsToTransactions, isExcludedBudgetCategory, transactionsForBudget, type BudgetTransactionBreakdown, type BudgetWallet } from "./utils/budgetSpending";
 type Props = { page: string; onNotice: (text: string) => void };
+type ExpectedIncomeRecord = {
+  id: number | string;
+  source?: string;
+  name?: string;
+  type?: string;
+  category?: string;
+  amount: number;
+  expectedDate?: string;
+  date?: string;
+  dueDate?: string;
+  frequency?: string;
+  recurrenceEnd?: string;
+  status?: string;
+  archived?: boolean;
+};
 const peso = (n: number) =>
   `${n < 0 ? "−" : ""}₱${Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 const pesoExact = (n: number) =>
@@ -69,6 +86,64 @@ const monthName=(monthKey:string)=>new Date(`${monthKey}-01T12:00`).toLocaleDate
 const normalizeCategoryKey=(value:string)=>value.toLowerCase().replace(/\s*\/\s*/g," / ").replace(/\s+/g," ").trim();
 const budgetKey=(budget:Pick<CategoryBudget,"name"|"parent"|"subcategory">)=>normalizeCategoryKey(budget.subcategory?`${budget.parent||budget.name} / ${budget.subcategory}`:budget.parent||budget.name);
 const stableNegativeId=(value:string)=>-Math.abs(Array.from(value).reduce((hash,char)=>((hash<<5)-hash+char.charCodeAt(0))|0,0))-1;
+const addBudgetMonths=(value:string,months:number)=>{
+  const source=new Date(`${value}T12:00`);
+  const day=source.getDate();
+  const target=new Date(source.getFullYear(),source.getMonth()+months+1,0,12);
+  const date=new Date(source.getFullYear(),source.getMonth()+months,Math.min(day,target.getDate()),12);
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
+};
+const addBudgetDays=(value:string,days:number)=>{
+  const date=new Date(`${value}T12:00`);
+  date.setDate(date.getDate()+days);
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
+};
+const budgetFrequencyStep=(frequency=""):{days?:number;months?:number}|null=>{
+  const value=frequency.toLowerCase().trim();
+  if(!value||value==="one-time"||value==="one time")return null;
+  if(value==="weekly")return{days:7};
+  if(value==="every two weeks"||value==="biweekly")return{days:14};
+  if(value==="monthly")return{months:1};
+  if(value==="every two months")return{months:2};
+  if(value==="quarterly")return{months:3};
+  if(value==="semiannually"||value==="semi-annually")return{months:6};
+  if(value==="annually"||value==="yearly")return{months:12};
+  return null;
+};
+const budgetRecurringDates=(baseDate:string,frequency:string|undefined,rangeStart:string,rangeEnd:string)=>{
+  if(!baseDate)return[] as string[];
+  const step=budgetFrequencyStep(frequency);
+  if(!step)return baseDate>=rangeStart&&baseDate<=rangeEnd?[baseDate]:[];
+  const dates:string[]=[];
+  let cursor=baseDate;
+  let guard=0;
+  while(cursor<rangeStart&&guard<180){
+    cursor=step.days?addBudgetDays(cursor,step.days):addBudgetMonths(cursor,step.months??1);
+    guard+=1;
+  }
+  while(cursor<=rangeEnd&&guard<280){
+    if(cursor>=rangeStart)dates.push(cursor);
+    cursor=step.days?addBudgetDays(cursor,step.days):addBudgetMonths(cursor,step.months??1);
+    guard+=1;
+  }
+  return dates;
+};
+const expectedIncomeTotalForRange=(records:ExpectedIncomeRecord[],rangeStart:string,rangeEnd:string)=>{
+  const inactive=new Set(["deleted","archived","cancelled","canceled","skipped"]);
+  const seen=new Set<string>();
+  return records
+    .filter(record=>!record.archived&&!inactive.has(String(record.status||"").toLowerCase()))
+    .reduce((sum,record)=>{
+      const baseDate=record.expectedDate||record.date||record.dueDate||"";
+      const dates=budgetRecurringDates(baseDate,record.frequency,rangeStart,rangeEnd);
+      return sum+dates.reduce((inner,date)=>{
+        const key=`${record.id}-${date}-${record.source||record.name||record.category||""}`;
+        if(seen.has(key))return inner;
+        seen.add(key);
+        return inner+Number(record.amount||0);
+      },0);
+    },0);
+};
 const budgetActualStatus=(item:CategoryBudget)=>{
   const allocated=Number(item.allocated||0),actual=Number(item.actual||0),usage=allocated?actual/allocated*100:0;
   if(actual<=0)return "No Spending";
@@ -244,16 +319,22 @@ export default function AdvancedPlanning({ page, onNotice }: Props) {
     [debts, setDebts] = useFirestoreState<Debt[]>("debts", []),
     [receivables, setReceivables] = useFirestoreState<Receivable[]>("receivables", []),
     [planned, setPlanned] = useFirestoreState<PlannedPayment[]>("plannedPayments", []),
+    [cashFlowPlanning] = useFirestoreState<ExpectedIncomeRecord[]>("planning", []),
+    [expectedIncomeRecords] = useFirestoreState<ExpectedIncomeRecord[]>("income", []),
     [installments, setInstallments] = useFirestoreState<Installment[]>("installments", []),
     [query, setQuery] = useState(""),
     [showArchived, setShowArchived] = useState(false),
     [adding, setAdding] = useState(false),
     [action, setAction] = useState<number | null>(null),
     [collectionAction,setCollectionAction]=useState<number|null>(null),
+    [historyAction,setHistoryAction]=useState<number|null>(null),
+    [installmentFilter,setInstallmentFilter]=useState("Active"),
+    [installmentSort,setInstallmentSort]=useState("next-due-asc"),
     [budgetStatus,setBudgetStatus]=useState("All"),
     [budgetSort,setBudgetSort]=useState("actual-desc"),
     [budgetMonth,setBudgetMonth]=useState(currentMonthKey()),
-    [budgetWallet]=useWalletSnapshot<BudgetWallet>({accountTransactions:[],transactions:[],cards:[]});
+    [budgetTransactions,setBudgetTransactions]=useState<number|null>(null),
+    [budgetWallet]=useWalletSnapshot<BudgetWallet>({accounts:[],accountTransactions:[],transactions:[],cards:[]});
   const categories=useCategories();
   const connectedBudgets=useMemo(()=>connectBudgetsToTransactions(budgets,budgetWallet),[budgets,budgetWallet]);
   const config =
@@ -301,11 +382,25 @@ export default function AdvancedPlanning({ page, onNotice }: Props) {
           : page === "Planned payments"
             ? planned
             : installments;
-  const visible = list.filter(
-    (r: any) =>
-      r.archived === showArchived &&
-      JSON.stringify(r).toLowerCase().includes(query.toLowerCase()),
-  );
+  const isCompletedInstallment=(record:any)=>page==="Installments"&&(String(record.status).toLowerCase()==="completed"||Number(record.remainingPayable||0)<=0||Number(record.paidCount||0)>=Number(record.count||0));
+  const effectiveArchived=(record:any)=>Boolean(record.archived)||isCompletedInstallment(record);
+  const visible = list
+    .filter((r: any) => {
+      const archivedMatches=effectiveArchived(r)===showArchived;
+      const queryMatches=JSON.stringify(r).toLowerCase().includes(query.toLowerCase());
+      if(page!=="Installments")return archivedMatches&&queryMatches;
+      const status=String(isCompletedInstallment(r)?"Completed":r.status||"Active").toLowerCase();
+      const filterMatches=installmentFilter==="All"||status===installmentFilter.toLowerCase();
+      return archivedMatches&&queryMatches&&filterMatches;
+    })
+    .sort((a:any,b:any)=>{
+      if(page!=="Installments")return 0;
+      if(installmentSort==="next-due-desc")return String(b.nextDue||"").localeCompare(String(a.nextDue||""));
+      if(installmentSort==="balance-desc")return Number(b.remainingPayable||0)-Number(a.remainingPayable||0);
+      if(installmentSort==="balance-asc")return Number(a.remainingPayable||0)-Number(b.remainingPayable||0);
+      if(installmentSort==="progress-desc")return (Number(b.paidCount||0)/Math.max(1,Number(b.count||1)))-(Number(a.paidCount||0)/Math.max(1,Number(a.count||1)));
+      return String(a.nextDue||"").localeCompare(String(b.nextDue||""));
+    });
   const archive = (id: number) => {
     const updater = (rows: any[]) =>
       rows.map((r) => (r.id === id ? { ...r, archived: !r.archived } : r));
@@ -335,12 +430,12 @@ export default function AdvancedPlanning({ page, onNotice }: Props) {
       ...connectedBudgets.flatMap(item=>[item.start?.slice(0,7),item.end?.slice(0,7)]).filter(Boolean),
     ])).sort();
     const categoryTemplates=categories
-      .filter(category=>category.name!=="Income")
+      .filter(category=>category.name!=="Income"&&!isExcludedBudgetCategory(category.name))
       .flatMap(category=>(category.subcategories?.length?category.subcategories.map(sub=>({name:`${category.name} / ${sub.name}`,parent:category.name,subcategory:sub.name,type:"Subcategory"})):[{name:category.name,parent:category.name,subcategory:"",type:"Category"}]));
     const transactionCategoryTemplates=Array.from(new Set([
       ...(budgetWallet.accountTransactions??[]).filter(item=>item.type==="Expense").map(item=>item.category).filter(Boolean) as string[],
       ...(budgetWallet.transactions??[]).filter(item=>["posted","completed"].includes(String(item.status||"").toLowerCase())&&["purchase","installment","fee","interest"].includes(String(item.type||"").toLowerCase())).map(item=>item.category).filter(Boolean) as string[],
-    ])).map(value=>({name:value,parent:value.split(" / ")[0]||value,subcategory:value.split(" / ")[1]||"",type:value.includes(" / ")?"Subcategory":"Category"}));
+    ])).filter(value=>!isExcludedBudgetCategory(String(value))).map(value=>({name:value,parent:value.split(" / ")[0]||value,subcategory:value.split(" / ")[1]||"",type:value.includes(" / ")?"Subcategory":"Category"}));
     const allCategoryTemplates=Array.from(new Map([...categoryTemplates,...transactionCategoryTemplates].map(item=>[normalizeCategoryKey(item.name),item])).values());
     const monthBudgetByKey=new Map(connectedBudgets.filter(item=>item.start<=selectedMonth.end&&item.end>=selectedMonth.start).map(item=>[budgetKey(item),item]));
     const carriedBudgetByKey=new Map<string,CategoryBudget>();
@@ -374,7 +469,7 @@ export default function AdvancedPlanning({ page, onNotice }: Props) {
         archived: false,
       } as CategoryBudget;
     }),budgetWallet);
-    const monthFilteredBudgets=allBudgetRows;
+    const monthFilteredBudgets=allBudgetRows.filter(item=>!isExcludedBudgetCategory(item.parent||item.name));
     const budgetVisible=monthFilteredBudgets.filter((item:any)=>{
       const monthMatches=item.start<=selectedMonth.end&&item.end>=selectedMonth.start;
       const archivedFilter=budgetStatus==="Archived"?item.archived:!item.archived;
@@ -387,9 +482,25 @@ export default function AdvancedPlanning({ page, onNotice }: Props) {
     const totalBudget=activeBudgets.reduce((sum,item)=>sum+Number(item.allocated||0),0);
     const totalActual=activeBudgets.reduce((sum,item)=>sum+Number(item.actual||0),0);
     const difference=totalBudget-totalActual;
-    const usage=totalBudget?totalActual/totalBudget*100:0;
     const periodStart=selectedMonth.start;
     const periodEnd=selectedMonth.end;
+    const expectedIncome=expectedIncomeTotalForRange([
+      ...expectedIncomeRecords,
+      ...planned.filter(item=>item.type==="Income").map(item=>({
+        id:`planned-${item.id}`,
+        source:item.name,
+        category:item.category,
+        amount:item.amount,
+        expectedDate:item.expectedDate||item.dueDate,
+        frequency:item.frequency,
+        status:item.status,
+        archived:item.archived,
+      })),
+      ...cashFlowPlanning.filter(item=>item.type==="Income"),
+    ],periodStart,periodEnd);
+    const remainingAfterBudget=expectedIncome-totalBudget;
+    const remainingAfterActual=expectedIncome-totalActual;
+    const usage=totalBudget?totalActual/totalBudget*100:0;
     const remainingDays=Math.max(0,Math.ceil((new Date(`${periodEnd}T12:00`).getTime()-new Date(`${todayIso()}T12:00`).getTime())/86400000)+1);
     const displayedBudgets=budgetVisible.filter(item=>!item.archived);
     const sortName=(item:CategoryBudget)=>item.subcategory?`${item.parent} / ${item.subcategory}`:item.name;
@@ -430,7 +541,7 @@ export default function AdvancedPlanning({ page, onNotice }: Props) {
               <button className="outline" onClick={exportBudgetReport}><Download/>Export</button>
             </div>
           </div>
-          <BudgetSummaryCards budgets={activeBudgets} daysLeft={remainingDays} periodEnd={periodEnd}/>
+          <BudgetSummaryCards budgets={activeBudgets} expectedIncome={expectedIncome} daysLeft={remainingDays} periodEnd={periodEnd}/>
           <article className="budget-chart-card">
             <div className="budget-chart-title"><b>Budget vs Actual by Category</b><select value={budgetStatus} onChange={event=>setBudgetStatus(event.target.value)} aria-label="Budget category filter"><option>All</option>{budgetStatusOptions.filter(option=>option!=="All").map(option=><option key={option}>{option}</option>)}</select></div>
             <BudgetVsActualChart budgets={chartRows} onSelect={(item)=>setAction(item.id)}/>
@@ -456,7 +567,17 @@ export default function AdvancedPlanning({ page, onNotice }: Props) {
             </div>
             <div className="budget-table-head"><span>Category</span><span>Budget</span><span>Actual</span><span>Difference</span><span>% of Budget</span></div>
             <div className="budget-table-body">
-              {sortedDisplayedBudgets.map((item:any)=><BudgetTableRow key={item.id} item={item} onView={()=>setAction(item.id)} />)}
+              {sortedDisplayedBudgets.map((item:any)=><BudgetTableRow
+                key={item.id}
+                item={item}
+                onEdit={()=>setAction(item.id)}
+                onTransactions={()=>setBudgetTransactions(item.id)}
+                onDelete={()=>{
+                  if(Number(item.id)<0){onNotice("No saved budget to delete yet.");return}
+                  setBudgets(current=>current.filter(budget=>String(budget.id)!==String(item.id)));
+                  onNotice(`${item.subcategory?`${item.parent} / ${item.subcategory}`:item.name} budget deleted`);
+                }}
+              />)}
               {!!displayedBudgets.length&&<div className="budget-table-row budget-total-row">
                 <span className="budget-category-cell"><span><b>Total</b></span></span>
                 <strong>{pesoExact(displayedBudgets.reduce((sum,item)=>sum+Number(item.allocated||0),0))}</strong>
@@ -466,7 +587,7 @@ export default function AdvancedPlanning({ page, onNotice }: Props) {
             </div>
             {!displayedBudgets.length&&<div className="budget-table-empty"><Archive/><b>No budgets found</b><span>Try another category filter or add a new budget.</span></div>}
           </div>
-          <div className={`budget-insight-callout ${difference<0?"negative":"positive"}`}><TrendingUp/><span><b>{difference>=0?`You're under budget by ${pesoExact(difference)} (${(100-usage).toFixed(1)}%).`:`You're over budget by ${pesoExact(Math.abs(difference))}.`}</b><small>{difference>=0?"Great job! Keep tracking to stay on plan.":"Review the over-limit categories and adjust your spending plan."}</small></span></div>
+          <div className={`budget-insight-callout ${remainingAfterBudget<0?"negative":"positive"}`}><TrendingUp/><span><b>{remainingAfterBudget>=0?`Your budget fits your expected income with ${pesoExact(remainingAfterBudget)} left after planned budgets.`:`Your budgets exceed expected income by ${pesoExact(Math.abs(remainingAfterBudget))}.`}</b><small>{remainingAfterBudget>=0?`After actual spending, expected remaining is ${pesoExact(remainingAfterActual)}.`:"Reduce budget limits or add expected income for this month."}</small></span></div>
         </div>
         {adding&&<CreateModal page={page} onClose={()=>setAdding(false)} onSave={(record:any)=>{setBudgets(v=>[record,...v]);setAdding(false);onNotice(`${record.name} added`)}}/>}
         {action!==null&&<ActionModal page={page} item={allBudgetRows.find((r:any)=>r.id===action)!} onClose={()=>setAction(null)} onApply={(values:any)=>{
@@ -487,6 +608,10 @@ export default function AdvancedPlanning({ page, onNotice }: Props) {
           }
           setAction(null);
         }}/>}
+        {budgetTransactions!==null&&(()=>{
+          const selected=allBudgetRows.find(item=>String(item.id)===String(budgetTransactions));
+          return selected?<BudgetTransactionsModal item={selected} transactions={transactionsForBudget(selected,budgetWallet)} onClose={()=>setBudgetTransactions(null)}/>:null;
+        })()}
       </section>
     )
   }
@@ -526,10 +651,29 @@ export default function AdvancedPlanning({ page, onNotice }: Props) {
           {showArchived ? <RotateCcw /> : <Archive />}
           {showArchived ? "View active" : "View archive"}
         </button>
-        <button onClick={() => onNotice("Filter and sort options opened")}>
-          <Filter />
-          Filter & sort
-        </button>
+        {page === "Installments" ? (
+          <div className="planning-filter-sort">
+            <Filter />
+            <select value={installmentFilter} onChange={(event)=>setInstallmentFilter(event.target.value)} aria-label="Filter installments">
+              <option>Active</option>
+              <option>Partially paid</option>
+              <option>Completed</option>
+              <option>All</option>
+            </select>
+            <select value={installmentSort} onChange={(event)=>setInstallmentSort(event.target.value)} aria-label="Sort installments">
+              <option value="next-due-asc">Due date: earliest</option>
+              <option value="next-due-desc">Due date: latest</option>
+              <option value="balance-desc">Balance: highest</option>
+              <option value="balance-asc">Balance: lowest</option>
+              <option value="progress-desc">Progress: highest</option>
+            </select>
+          </div>
+        ) : (
+          <button onClick={() => onNotice("Filter and sort options opened")}>
+            <Filter />
+            Filter & sort
+          </button>
+        )}
       </div>
       <div className="planning-list">
         {visible.map((item: any) => (
@@ -539,6 +683,7 @@ export default function AdvancedPlanning({ page, onNotice }: Props) {
             item={item}
             onAction={() => setAction(item.id)}
             onCollect={() => setCollectionAction(item.id)}
+            onHistory={() => setHistoryAction(item.id)}
             onArchive={() => archive(item.id)}
           />
         ))}
@@ -645,8 +790,9 @@ export default function AdvancedPlanning({ page, onNotice }: Props) {
               onNotice(`${result.payment.status} · linked transaction created`);
             } else if (page === "Installments") {
               if (values.action === "delete") {
-                setInstallments((current) => current.map((record) => record.id === action ? {...record, archived: true} : record));
-                onNotice("Installment moved to archive");
+                const deleted = installments.find((record) => record.id === action);
+                setInstallments((current) => current.filter((record) => record.id !== action));
+                onNotice(`${deleted?.name ?? "Installment"} deleted`);
                 setAction(null);
                 return;
               }
@@ -668,7 +814,7 @@ export default function AdvancedPlanning({ page, onNotice }: Props) {
                   finalDue: recurrenceDates(values.start || currentInstallment.start, count).at(-1) || currentInstallment.finalDue,
                   status: currentInstallment.paidCount >= count ? "Completed" : currentInstallment.status,
                 };
-                setInstallments((records) => records.map((record) => record.id === action ? updated : record));
+                setInstallments((records) => records.map((record) => record.id === action ? {...updated, archived: updated.status === "Completed" ? true : updated.archived} : record));
                 onNotice(`${updated.name} installment updated`);
                 setAction(null);
                 return;
@@ -679,10 +825,11 @@ export default function AdvancedPlanning({ page, onNotice }: Props) {
                 values.amount,
                 values.date,
               );
+              const savedInstallment={...result.installment, archived: result.installment.status === "Completed" ? true : result.installment.archived};
               setInstallments((v) =>
-                v.map((i) => (i.id === action ? result.installment : i)),
+                v.map((i) => (i.id === action ? savedInstallment : i)),
               );
-              onNotice(`Installment payment posted`);
+              onNotice(savedInstallment.status === "Completed" ? `Installment completed and archived` : `Installment payment posted`);
             }
             setAction(null);
           }}
@@ -700,6 +847,12 @@ export default function AdvancedPlanning({ page, onNotice }: Props) {
             setCollectionAction(null);
             onNotice(`Collection recorded for ${record.title}`);
           }}
+        />
+      )}
+      {historyAction !== null && (
+        <ReceivablePaymentHistoryModal
+          item={receivables.find((record)=>record.id===historyAction)!}
+          onClose={()=>setHistoryAction(null)}
         />
       )}
     </section>
@@ -841,33 +994,82 @@ function PlanningSummary({
   );
 }
 
-function BudgetSummaryCards({budgets,daysLeft,periodEnd}:{budgets:CategoryBudget[];daysLeft:number;periodEnd:string}){
+function BudgetSummaryCards({budgets,expectedIncome,daysLeft,periodEnd}:{budgets:CategoryBudget[];expectedIncome:number;daysLeft:number;periodEnd:string}){
   const total=budgets.reduce((sum,budget)=>sum+budget.allocated,0),
     actual=budgets.reduce((sum,budget)=>sum+budget.actual,0),
-    remaining=budgets.reduce((sum,budget)=>sum+(Number(budget.allocated||0)-Number(budget.actual||0)),0),
+    remainingAfterBudget=expectedIncome-total,
+    remainingAfterActual=expectedIncome-actual,
     actualPercent=total?actual/total*100:0,
-    remainingPercent=total?remaining/total*100:0,
+    budgetIncomePercent=expectedIncome?total/expectedIncome*100:0,
     cards=[
-      {label:"Total Budget",value:pesoExact(total),note:"100% of budget",Icon:Wallet,tone:"blue",valueTone:""},
+      {label:"Expected Income",value:pesoExact(expectedIncome),note:"Funding for this month",Icon:HandCoins,tone:"green",valueTone:"positive"},
+      {label:"Total Budget",value:pesoExact(total),note:expectedIncome?`${budgetIncomePercent.toFixed(1)}% of expected income`:"Add expected income",Icon:Wallet,tone:"blue",valueTone:remainingAfterBudget<0?"negative":""},
       {label:"Total Actual",value:pesoExact(actual),note:`${actualPercent.toFixed(1)}% of budget`,Icon:Receipt,tone:"purple",valueTone:""},
-      {label:"Difference",value:pesoExact(remaining),note:`${Math.max(0,remainingPercent).toFixed(1)}% under budget`,Icon:TrendingUp,tone:"green",valueTone:remaining<0?"negative":"positive"},
+      {label:"Remaining After Budget",value:pesoExact(remainingAfterBudget),note:`After actual: ${pesoExact(remainingAfterActual)}`,Icon:TrendingUp,tone:"green",valueTone:remainingAfterBudget<0?"negative":"positive"},
       {label:"Days Left",value:`${daysLeft} ${daysLeft===1?"day":"days"}`,note:`Until ${new Date(`${periodEnd}T12:00`).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}`,Icon:CalendarClock,tone:"orange",valueTone:""},
     ];
   return <div className="budget-summary-redesign">{cards.map(({label,value,note,Icon,tone,valueTone})=><article className={tone} key={label}><span><Icon/></span><div><small>{label}</small><b className={valueTone}>{value}</b>{note&&<em>{note}</em>}</div></article>)}</div>
 }
 
-function BudgetTableRow({item,onView}:{item:CategoryBudget;onView:()=>void}){
+function BudgetTableRow({item,onEdit,onTransactions,onDelete}:{item:CategoryBudget;onEdit:()=>void;onTransactions:()=>void;onDelete:()=>void}){
+  const [menuPosition,setMenuPosition]=useState<{top:number;left:number}|null>(null);
+  const menuButtonRef=useRef<HTMLButtonElement|null>(null);
   const progress=item.allocated?Math.round(Number(item.actual||0)/Number(item.allocated||0)*100):0,
     remaining=Number(item.allocated||0)-Number(item.actual||0),
     statusClass=budgetActualStatus(item).toLowerCase().replace(/\s+/g,"-"),
     name=item.subcategory?`${item.parent} / ${item.subcategory}`:item.name;
-  return <div className={`budget-table-row ${statusClass}`} role="button" tabIndex={0} onClick={onView} onKeyDown={event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();onView()}}}>
+  const openMenu=()=>{
+    const rect=menuButtonRef.current?.getBoundingClientRect();
+    if(!rect)return;
+    const menuWidth=190,menuHeight=142,gap=6;
+    setMenuPosition({
+      left:Math.max(10,Math.min(window.innerWidth-menuWidth-10,rect.right-menuWidth)),
+      top:rect.bottom+menuHeight+gap>window.innerHeight?Math.max(10,rect.top-menuHeight-gap):rect.bottom+gap,
+    });
+  };
+  const selectAction=(action:()=>void)=>{setMenuPosition(null);action()};
+  return <div className={`budget-table-row ${statusClass}`}>
     <span className="budget-category-cell"><CategoryIcon value={name}/><span><b>{name}</b><small>{item.notes || item.period}</small></span></span>
     <strong className={Number(item.allocated||0)===0?"not-set":""}>{Number(item.allocated||0)===0?"Not Set":pesoExact(item.allocated)}</strong>
-    <strong>{pesoExact(item.actual)}</strong>
+    <button type="button" className="budget-actual-button" onClick={onTransactions} aria-label={`View transactions included in ${name} actual amount`}>{pesoExact(item.actual)}</button>
     <strong className={remaining<0?"negative":"positive"}>{pesoExact(remaining)}</strong>
-    <span className="budget-table-progress"><strong className={progress>=100?"negative":progress>=90?"warning":"positive"}>{progress}%</strong><i><b style={{width:`${Math.min(100,Math.max(0,progress))}%`}}/></i></span>
+    <span className="budget-table-progress-cell">
+      <span className="budget-table-progress"><strong className={progress>=100?"negative":progress>=90?"warning":"positive"}>{progress}%</strong><i><b style={{width:`${Math.min(100,Math.max(0,progress))}%`}}/></i></span>
+      <button ref={menuButtonRef} type="button" className="budget-row-menu-button" onClick={openMenu} aria-label={`Actions for ${name}`} aria-haspopup="menu" aria-expanded={Boolean(menuPosition)}><MoreVertical/></button>
+    </span>
+    {menuPosition&&createPortal(<div className="budget-row-menu-layer" onMouseDown={()=>setMenuPosition(null)}>
+      <div className="budget-row-menu-popover" role="menu" style={menuPosition} onMouseDown={event=>event.stopPropagation()}>
+        <button type="button" role="menuitem" onClick={()=>selectAction(onEdit)}>Edit</button>
+        <button type="button" role="menuitem" onClick={()=>selectAction(onTransactions)}>Transactions</button>
+        <button type="button" role="menuitem" className="danger" onClick={()=>selectAction(onDelete)}>Delete</button>
+      </div>
+    </div>,document.body)}
   </div>
+}
+
+function BudgetTransactionsModal({item,transactions,onClose}:{item:CategoryBudget;transactions:BudgetTransactionBreakdown[];onClose:()=>void}){
+  const name=item.subcategory?`${item.parent} / ${item.subcategory}`:item.name;
+  const total=transactions.reduce((sum,transaction)=>sum+transaction.amount,0);
+  return <Modal title={`${name} transactions`} onClose={onClose} wide className="budget-transactions-dialog">
+    <div className="budget-transactions-modal">
+      <div className="budget-transaction-summary">
+        <span><small>Actual total</small><b>{pesoExact(total)}</b></span>
+        <span><small>Transactions</small><b>{transactions.length}</b></span>
+        <span><small>Budget period</small><b>{new Date(`${item.start}T12:00`).toLocaleDateString("en-US",{month:"short",day:"numeric"})} – {new Date(`${item.end}T12:00`).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</b></span>
+      </div>
+      <div className="budget-transaction-head"><span>Date</span><span>Description</span><span>Account / Card</span><span>Amount</span></div>
+      <div className="budget-transaction-list">
+        {transactions.map(transaction=><div className="budget-transaction-row" key={transaction.id}>
+          <span>{new Date(`${transaction.date}T12:00`).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</span>
+          <span><b>{transaction.description}</b><small>{transaction.accountKind}</small></span>
+          <span>{transaction.account}</span>
+          <strong>{pesoExact(transaction.amount)}</strong>
+        </div>)}
+        {!transactions.length&&<div className="budget-transaction-empty"><Receipt/><b>No contributing transactions</b><span>The Actual amount is ₱0.00 for this budget period.</span></div>}
+      </div>
+      {!!transactions.length&&<div className="budget-transaction-total"><span>Total</span><strong>{pesoExact(total)}</strong></div>}
+    </div>
+  </Modal>
 }
 
 function BudgetVsActualChart({budgets,onSelect}:{budgets:CategoryBudget[];onSelect:(item:CategoryBudget)=>void}){
@@ -897,7 +1099,7 @@ function BudgetVsActualChart({budgets,onSelect}:{budgets:CategoryBudget[];onSele
   const measuredWidth=Math.max(0,Math.floor(containerWidth||0));
   const scrollWidth=visibleBudgets.length>8?visibleBudgets.length*118+76:0;
   const svgWidth=Math.max(420,measuredWidth,scrollWidth);
-  const max=Math.max(1,...visibleBudgets.flatMap(item=>[Number(item.allocated||0),Number(item.actual||0),Math.max(0,Number(item.allocated||0)-Number(item.actual||0))])),
+  const max=Math.max(1,...visibleBudgets.flatMap(item=>[Number(item.allocated||0),Number(item.actual||0)])),
     chartMax=Math.ceil(max/1000)*1000,
     left=44,right=Math.max(392,svgWidth-28),top=24,bottom=252,
     step=(right-left)/Math.max(1,visibleBudgets.length),
@@ -905,14 +1107,14 @@ function BudgetVsActualChart({budgets,onSelect}:{budgets:CategoryBudget[];onSele
     y=(value:number)=>bottom-(value/chartMax)*(bottom-top),
     label=(value:number)=>value>=1000?`₱${Number((value/1000).toFixed(1)).toLocaleString()}K`:`₱${value}`;
   return <div className="budget-chart-wrap" ref={containerRef}>
-    <div className="budget-chart-legend"><span className="budget">Budget</span><span className="actual">Actual</span><span className="remaining">Remaining</span></div>
+    <div className="budget-chart-legend"><span className="budget">Budget</span><span className="actual">Actual</span></div>
     <div className="budget-chart-scroll" aria-label={visibleBudgets.length>8?"Scrollable budget chart":"Budget chart"}>
     <svg style={{"--budget-chart-min-width": visibleBudgets.length>8?`${svgWidth}px`:"100%"} as React.CSSProperties} viewBox={`0 0 ${svgWidth} 320`} role="img" aria-label="Budget versus actual by category">
       <title>Budget versus actual by category</title>
       {[1,.75,.5,.25,0].map(ratio=>{const value=chartMax*ratio,yy=y(value);return <g key={ratio}><line x1={left} x2={right} y1={yy} y2={yy}/><text x="10" y={yy+5}>{label(value)}</text></g>})}
       {visibleBudgets.length?visibleBudgets.map((item,index)=>{
-        const center=left+step*(index+.5),budgetY=y(Number(item.allocated||0)),actualY=y(Number(item.actual||0)),remaining=Math.max(0,Number(item.allocated||0)-Number(item.actual||0)),remainingY=y(remaining),name=item.subcategory||item.parent||item.name;
-        return <g key={item.id} className="clickable-chart-item" role="button" tabIndex={0} aria-label={`Open ${name} budget details`} onClick={()=>onSelect(item)} onKeyDown={event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();onSelect(item)}}}><rect className="budget" x={center-barWidth*1.6} y={budgetY} width={barWidth} height={bottom-budgetY} rx="5"/><rect className="actual" x={center-barWidth*.45} y={actualY} width={barWidth} height={bottom-actualY} rx="5"/><rect className="remaining" x={center+barWidth*.7} y={remainingY} width={barWidth} height={bottom-remainingY} rx="5"/><text className="x-label" x={center} y="292" textAnchor="middle">{name.length>13?`${name.slice(0,12)}…`:name}</text><title>{`${name}: Budget ${Number(item.allocated||0)===0?"Not Set":pesoExact(item.allocated)}, Actual ${pesoExact(item.actual)}`}</title></g>
+        const center=left+step*(index+.5),budgetY=y(Number(item.allocated||0)),actualY=y(Number(item.actual||0)),name=item.subcategory||item.parent||item.name;
+        return <g key={item.id} className="clickable-chart-item" role="button" tabIndex={0} aria-label={`Open ${name} budget details`} onClick={()=>onSelect(item)} onKeyDown={event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();onSelect(item)}}}><rect className="budget" x={center-barWidth*1.15} y={budgetY} width={barWidth} height={bottom-budgetY} rx="5"/><rect className="actual" x={center+barWidth*.15} y={actualY} width={barWidth} height={bottom-actualY} rx="5"/><text className="x-label" x={center} y="292" textAnchor="middle">{name.length>13?`${name.slice(0,12)}…`:name}</text><title>{`${name}: Budget ${Number(item.allocated||0)===0?"Not Set":pesoExact(item.allocated)}, Actual ${pesoExact(item.actual)}`}</title></g>
       }):<text className="empty" x={svgWidth/2} y="150" textAnchor="middle">No budgeted categories to chart yet</text>}
     </svg>
     </div>
@@ -924,12 +1126,14 @@ function PlanningCard({
   item,
   onAction,
   onCollect,
+  onHistory,
   onArchive,
 }: {
   page: string;
   item: any;
   onAction: () => void;
   onCollect?: () => void;
+  onHistory?: () => void;
   onArchive: () => void;
 }) {
   let title = item.name || item.title,
@@ -967,7 +1171,19 @@ function PlanningCard({
       progress = totalOwed > 0 ? Math.min(100, collectedTotal / totalOwed * 100) : 0,
       status = remaining <= 0 ? "Paid in Full" : item.expectedDate < todayIso() ? "Overdue" : collectedTotal > 0 ? "In Progress" : "Not Started";
     return (
-      <article className="surface planning-card compact-list-item receivable-list-item receivable-card-v2">
+      <article
+        className="surface planning-card compact-list-item receivable-list-item receivable-card-v2"
+        role="button"
+        tabIndex={0}
+        onClick={onAction}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onAction();
+          }
+        }}
+        aria-label={`View ${title} receivable details`}
+      >
         <div className="receivable-main-row">
           <div className="receivable-details-cell">
             <b>{title}</b>
@@ -984,8 +1200,8 @@ function PlanningCard({
             <span><b>{peso(collectedTotal)} of {peso(totalOwed)} collected</b><small>{progress.toFixed(2)}%</small></span>
             <i><em style={{width:`${progress}%`}} /></i>
           </div>
-          <button className="primary" type="button" onClick={onCollect}>Record Collection</button>
-          <button className="outline" type="button" onClick={onAction}>View Details</button>
+          <button className="primary" type="button" onClick={(event)=>{event.stopPropagation();onCollect?.()}}>Record Collection</button>
+          <button className="outline" type="button" onClick={(event)=>{event.stopPropagation();onHistory?.()}}>Payment History</button>
         </div>
       </article>
     )
@@ -1353,6 +1569,59 @@ function RecordCollectionModal({
   )
 }
 
+function ReceivablePaymentHistoryModal({
+  item,
+  onClose,
+}:{
+  item:Receivable;
+  onClose:()=>void;
+}){
+  const history=item.collectionHistory ?? [];
+  const totalOwed=item.original+item.additional+(/business|investment/i.test(item.type)?0:item.interest)+item.fees;
+  const collected=item.collectedPrincipal+item.collectedInterest;
+  const remaining=receivableOutstanding(item);
+  return (
+    <Modal title={`Payment history · ${item.title}`} onClose={onClose}>
+      <div className="receivable-history-detail">
+        <div className="budget-edit-summary">
+          <span><small>Total owed</small><b>{peso(totalOwed)}</b></span>
+          <span><small>Collected</small><b className="positive">{peso(collected)}</b></span>
+          <span><small>Remaining</small><b>{peso(remaining)}</b></span>
+          <span><small>Payments</small><b>{history.length}</b></span>
+        </div>
+        <section className="receivable-history receivable-history-full">
+          <h3>Collections recorded</h3>
+          {history.length ? (
+            <>
+              <div className="receivable-history-head">
+                <span>Date / Account</span>
+                <span>Principal</span>
+                <span>Interest / Fees</span>
+                <span>Reference / Notes</span>
+                <span>Status</span>
+              </div>
+              {history
+                .slice()
+                .sort((a,b)=>String(b.date).localeCompare(String(a.date)))
+                .map((payment) => (
+                  <div key={payment.id}>
+                    <span><b>{payment.date}</b><small>{payment.account || "No account selected"}</small></span>
+                    <strong>{peso(payment.principal)}</strong>
+                    <strong>{peso(payment.interest + payment.fees)}</strong>
+                    <span><b>{payment.reference || "—"}</b><small>{payment.notes || "No notes"}</small></span>
+                    <em>{payment.status}</em>
+                  </div>
+                ))}
+            </>
+          ) : (
+            <p className="empty-card">No collections recorded yet. Use Record Collection once money is received.</p>
+          )}
+        </section>
+      </div>
+    </Modal>
+  )
+}
+
 function ActionModal({
   page,
   item,
@@ -1527,7 +1796,7 @@ function ActionModal({
         </form>
         <button className="danger-outline submit" type="button" onClick={() => confirmingDelete ? onApply({action:"delete"}) : setConfirmingDelete(true)}>
           <Trash2 />
-          {confirmingDelete ? "Confirm move to archive" : "Delete installment"}
+          {confirmingDelete ? "Confirm delete permanently" : "Delete installment"}
         </button>
       </Modal>
     );

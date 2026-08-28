@@ -8,6 +8,55 @@ type WalletShape = object & { updatedAt?: string };
 
 const firestoreSafe = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const serialize = (value: unknown) => JSON.stringify(firestoreSafe(value));
+const amountOf = (value: unknown) => Number(String(value ?? 0).replace(/[^0-9.-]/g, "")) || 0;
+const paymentFingerprint = (cardId: unknown, date: unknown, amount: unknown) =>
+  `${String(cardId)}|${String(date || "")}|${amountOf(amount).toFixed(2)}`;
+const paymentMarker = (value: unknown) =>
+  String(value ?? "").match(/(?:bill-payment|card-payment):[^·]+/)?.[0] ?? "";
+const cardTransactionDeleteKeys = (transaction: Record<string, any>) =>
+  [
+    paymentMarker(transaction.notes),
+    `${String(transaction.cardId)}|${String(transaction.postedDate || transaction.transactionDate || "")}|${String(transaction.type)}|${amountOf(transaction.amount).toFixed(2)}`,
+    `${String(transaction.cardId)}|${String(transaction.postedDate || transaction.transactionDate || "")}|${String(transaction.type)}|${amountOf(transaction.amount).toFixed(2)}|${String(transaction.description ?? "")}`,
+    `${String(transaction.cardId)}|${String(transaction.postedDate || transaction.transactionDate || "")}|${String(transaction.type)}|${String(transaction.amount)}|${String(transaction.description ?? "")}`,
+  ].filter(Boolean);
+const cardPaymentDeleteKeys = (payment: Record<string, any>) =>
+  [paymentMarker(payment.notes), String(payment.id), `card-payment:${String(payment.id)}`].filter(Boolean);
+const cardPaymentDisplayTransactionDeleteKeys = (payment: Record<string, any>) =>
+  cardTransactionDeleteKeys({
+    id: (Number(payment.id) || 0) + 1,
+    cardId: payment.cardId,
+    type: "payment",
+    description: `Payment from ${String(payment.account || "Payment account")}`,
+    amount: amountOf(payment.amount),
+    transactionDate: String(payment.date || ""),
+    postedDate: String(payment.date || ""),
+    notes: String(payment.notes || ""),
+  });
+const cardTransactionPaymentFingerprint = (transaction: Record<string, any>) =>
+  paymentFingerprint(transaction.cardId, String(transaction.postedDate || transaction.transactionDate || ""), transaction.amount);
+const cardPaymentFingerprint = (payment: Record<string, any>) =>
+  paymentFingerprint(payment.cardId, String(payment.date || ""), payment.amount);
+const sanitizeWalletSnapshot = <T extends WalletShape>(wallet: T): T => {
+  const value = wallet as Record<string, any>;
+  const deletedTransactions = new Set<string>((value.deletedCardTransactionKeys ?? []).map(String));
+  const deletedPayments = new Set<string>((value.deletedCardPaymentKeys ?? []).map(String));
+  const deletedPaymentFingerprints = new Set<string>((value.deletedCardPaymentFingerprints ?? []).map(String));
+  if (!deletedTransactions.size && !deletedPayments.size && !deletedPaymentFingerprints.size) return wallet;
+  return {
+    ...wallet,
+    transactions: Array.isArray(value.transactions)
+      ? value.transactions
+          .filter((transaction: Record<string, any>) => !cardTransactionDeleteKeys(transaction).some((key) => deletedTransactions.has(key)))
+          .filter((transaction: Record<string, any>) => String(transaction.type).toLowerCase() !== "payment" || !deletedPaymentFingerprints.has(cardTransactionPaymentFingerprint(transaction)))
+      : value.transactions,
+    payments: Array.isArray(value.payments)
+      ? value.payments.filter((payment: Record<string, any>) => !cardPaymentDeleteKeys(payment).some((key) => deletedPayments.has(key)))
+          .filter((payment: Record<string, any>) => !cardPaymentDisplayTransactionDeleteKeys(payment).some((key) => deletedTransactions.has(key)))
+          .filter((payment: Record<string, any>) => !deletedPaymentFingerprints.has(cardPaymentFingerprint(payment)))
+      : value.payments,
+  } as T;
+};
 
 function readCachedWallet<T extends WalletShape>(fallback: T): T | null {
   try {
@@ -19,11 +68,11 @@ function readCachedWallet<T extends WalletShape>(fallback: T): T | null {
 }
 
 export function readWalletSnapshot<T extends WalletShape>(fallback: T): T {
-  return readCachedWallet(fallback) ?? fallback;
+  return sanitizeWalletSnapshot(readCachedWallet(fallback) ?? fallback);
 }
 
 export function rememberWalletSnapshot<T extends WalletShape>(wallet: T, updatedAt = new Date().toISOString()): T {
-  const next = { ...wallet, updatedAt } as T;
+  const next = sanitizeWalletSnapshot({ ...wallet, updatedAt } as T);
   localStorage.setItem(walletCacheKey, serialize(next));
   return next;
 }
@@ -58,11 +107,11 @@ export function useWalletSnapshot<T extends WalletShape>(fallback: T) {
           return;
         }
 
-        const remote = { ...fallback, ...(snapshot.data() as T) } as T;
+        const remote = sanitizeWalletSnapshot({ ...fallback, ...(snapshot.data() as T) } as T);
         const local = readCachedWallet(fallback);
         const resolved =
           local?.updatedAt && local.updatedAt > (remote.updatedAt ?? "")
-            ? local
+            ? sanitizeWalletSnapshot(local)
             : remote;
         const serialized = serialize(resolved);
 

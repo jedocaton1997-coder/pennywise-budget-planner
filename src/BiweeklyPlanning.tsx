@@ -8,7 +8,7 @@ import { ConnectedAccountSelect } from './components/ConnectedAccountSelect'
 import { useFirestoreState } from './hooks/useFirestoreState'
 import { useWalletSnapshot } from './hooks/useWalletSnapshot'
 import { processBillPayment, type BillPaymentRecord, type WalletForBillPayment } from './utils/billPaymentProcessor'
-import { billUsesIncludedCard, filterIncludedCardTransactions } from './utils/netBalanceFilters'
+import { billUsesActiveCard, filterIncludedCardTransactions } from './utils/netBalanceFilters'
 
 type PlanType='Income'|'Expense'
 type PlanStatus='Expected'|'Confirmed'|'Actual'
@@ -128,7 +128,7 @@ function expandManualRows(items:PlanItem[],rangeStart:string,rangeEnd:string):Pl
 
 function automaticRows({bills,incomes,cards,wallet,rangeStart,rangeEnd}:{bills:Bill[];incomes:IncomeRecord[];cards?:CardLogoSource[];wallet:BudgetWallet;rangeStart:string;rangeEnd:string}):PlanningRow[]{
   const rows:PlanningRow[]=[]
-  bills.filter(bill=>billUsesIncludedCard(bill,cards??[])&&!statusIsSkipped(bill.status)).forEach(bill=>{
+  bills.filter(bill=>billUsesActiveCard(bill,cards??[])&&!statusIsSkipped(bill.status)).forEach(bill=>{
     const type:PlanType=bill.category==='Receivable collection'?'Income':'Expense'
     const cardLogo=cardForBill(bill,cards??[])
     const paidByDueDate=new Map<string,BillPaymentRecord>()

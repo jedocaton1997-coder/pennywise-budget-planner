@@ -9,6 +9,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "canvg": "^4.0.3",
     "dompurify": "^3.4.12",
     "firebase": "^12.16.0",
     "geist": "^1.7.0",

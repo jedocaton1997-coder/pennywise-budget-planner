@@ -38,6 +38,8 @@ const labelForKey=(key:string,mode:'day'|'week'|'month'|'year')=>{
   if(mode==='week')return date.toLocaleDateString('en-US',{month:'short',day:'numeric'})
   return date.toLocaleDateString('en-US',{month:'short',day:'numeric'})
 }
+const categoryParent=(category:string)=>category.split('/').map(part=>part.trim()).filter(Boolean)[0]||'Uncategorized'
+const isCreditCardCategory=(category:string)=>categoryParent(category).toLowerCase()==='credit card'
 
 export function normalizeStatisticsTransactions(wallet:StatisticsWallet):StatTransaction[]{
   const accounts=wallet.accounts??[],cards=wallet.cards??[]
@@ -107,9 +109,13 @@ export function calculateCategoryBreakdown(transactions:StatTransaction[],measur
 function rankBy(transactions:StatTransaction[],field:'category'|'account',measure:StatisticsMeasure,absolute:boolean):RankedStat[]{
   const rows=new Map<string,{income:number;expenses:number;incomeCount:number;expenseCount:number}>()
   transactions.forEach(transaction=>{
-    const row=rows.get(transaction[field])??{income:0,expenses:0,incomeCount:0,expenseCount:0}
+    const key=field==='category'?categoryParent(transaction.category):transaction[field]
+
+    if(field==='category'&&isCreditCardCategory(key))return
+
+    const row=rows.get(key)??{income:0,expenses:0,incomeCount:0,expenseCount:0}
     if(transaction.type==='Income'){row.income+=transaction.amount;row.incomeCount+=1}else{row.expenses+=transaction.amount;row.expenseCount+=1}
-    rows.set(transaction[field],row)
+    rows.set(key,row)
   })
   const mapped=[...rows.entries()].map(([name,row],index)=>{
     const incomeValue=measure==='Amount'?row.income:row.incomeCount,expenseValue=measure==='Amount'?row.expenses:row.expenseCount

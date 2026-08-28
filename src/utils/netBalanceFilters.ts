@@ -6,6 +6,10 @@ export function includedCardIds(cards:CardLike[]=[]){
   return new Set(cards.filter(card=>card.active!==false&&card.includeInNetBalance!==false).map(card=>String(card.id)))
 }
 
+export function activeCardIds(cards:CardLike[]=[]){
+  return new Set(cards.filter(card=>card.active!==false).map(card=>String(card.id)))
+}
+
 export function usesIncludedCard<T extends CardTransactionLike>(transaction:T,cards:CardLike[]=[]){
   return includedCardIds(cards).has(String(transaction.cardId))
 }
@@ -17,7 +21,7 @@ export function filterIncludedCardTransactions<T extends CardTransactionLike>(tr
 
 export function billUsesIncludedCard<T extends BillLike>(bill:T,cards:CardLike[]=[]){
   const source=String(bill.sourceKey??'')
-  const sourceMatch=source.match(/^credit-card-statement:(\d+):/)
+  const sourceMatch=source.match(/^credit-card-statement:([^:]+):/)
   if(sourceMatch)return includedCardIds(cards).has(sourceMatch[1])
 
   if(!/credit\s*card/i.test(String(bill.category??'')))return true
@@ -25,4 +29,16 @@ export function billUsesIncludedCard<T extends BillLike>(bill:T,cards:CardLike[]
   const billName=String(bill.name??'').replace(/\s+statement$/i,'').trim().toLowerCase()
   const matchingCard=cards.find(card=>String(card.name??'').trim().toLowerCase()===billName)
   return matchingCard?matchingCard.includeInNetBalance!==false:true
+}
+
+export function billUsesActiveCard<T extends BillLike>(bill:T,cards:CardLike[]=[]){
+  const source=String(bill.sourceKey??'')
+  const sourceMatch=source.match(/^credit-card-statement:([^:]+):/)
+  if(sourceMatch)return activeCardIds(cards).has(sourceMatch[1])
+
+  if(!/credit\s*card/i.test(String(bill.category??'')))return true
+
+  const billName=String(bill.name??'').replace(/\s+statement$/i,'').trim().toLowerCase()
+  const matchingCard=cards.find(card=>String(card.name??'').trim().toLowerCase()===billName)
+  return matchingCard?matchingCard.active!==false:true
 }

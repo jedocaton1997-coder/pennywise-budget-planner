@@ -3,13 +3,14 @@ import { CalendarDays, ChevronLeft, ChevronRight, CircleDollarSign, CreditCard, 
 import { useFirestoreState } from './hooks/useFirestoreState'
 import { useWalletSnapshot } from './hooks/useWalletSnapshot'
 import { adjustToWeekday, calculateDueDate } from './domain/creditCardEngine'
-import { billUsesIncludedCard } from './utils/netBalanceFilters'
+import { billUsesActiveCard } from './utils/netBalanceFilters'
 
 type Tone='income'|'expense'|'credit-card'|'savings'|'overdue'|'completed'
 type EventType='Income'|'Bill due'|'Credit card due'|'Statement date'|'Savings contribution'|'Subscription renewal'|'Loan payment'
 type FinancialEvent={id:number;day:number;date?:string;name:string;type:EventType;amount:number;tone:Tone;account:string;status:string;recurring:string}
 type BillRecord={id:number;sourceKey?:string;name:string;category:string;amount:number;dueDate:string;frequency?:string;status:string;account?:string;statementDate?:string}
-type PlanRecord={id:number;type:'Income'|'Expense';name:string;category:string;amount:number;date:string;status?:string;account?:string;archived?:boolean}
+type PlanRecord={id:number;type:'Income'|'Expense'|string;name:string;category?:string;amount:number;date?:string;expectedDate?:string;dueDate?:string;frequency?:string;status?:string;account?:string;archived?:boolean}
+type IncomeRecord={id:number|string;source:string;type?:string;category?:string;amount:number;expectedDate:string;frequency?:string;account?:string;accountName?:string;status?:string}
 type WalletSnapshot={cards?:Array<{id:number;name:string;bank?:string;bankId?:string|null;active?:boolean;includeInNetBalance?:boolean;statementDay?:number;dueDateRule?:'fixed-next-month'|'days-after-statement'|'manual';fixedDueDay?:number;daysAfterStatement?:number;manualDueDate?:string;openingBalance?:number}>;statements?:Array<{id:number;cardId:number;statementDate:string;dueDate:string;statementBalance:number;remainingDue?:number;status?:string}>}
 type Props={onNotice:(text:string)=>void}
 
@@ -22,12 +23,20 @@ const monthKey=(date:Date)=>isoDate(date).slice(0,7)
 const monthTitle=(date:Date)=>date.toLocaleDateString('en-US',{month:'long',year:'numeric'})
 const stableNumberId=(value:string)=>Array.from(value).reduce((hash,char)=>((hash*31)+char.charCodeAt(0))>>>0,0)
 const addMonths=(date:Date,months:number)=>new Date(date.getFullYear(),date.getMonth()+months,date.getDate(),12)
+const addIsoDays=(value:string,days:number)=>{const date=new Date(`${value}T12:00`);date.setDate(date.getDate()+days);return isoDate(date)}
+const addIsoMonths=(value:string,months:number)=>{const date=new Date(`${value}T12:00`);date.setMonth(date.getMonth()+months);return isoDate(date)}
 const dateFromDay=(base:Date,day:number)=>adjustToWeekday(isoDate(new Date(base.getFullYear(),base.getMonth(),Math.min(Math.max(day||1,1),new Date(base.getFullYear(),base.getMonth()+1,0).getDate()),12)))
+const isRemovedStatus=(status='')=>['paid','skipped','cancelled','canceled','deleted','archived'].includes(status.toLowerCase().trim())
+const frequencyStep=(frequency=''):{days?:number;months?:number}|null=>{const value=frequency.toLowerCase().trim();if(!value||value==='one-time'||value==='one time')return null;if(value==='weekly')return{days:7};if(value==='every two weeks'||value==='biweekly')return{days:14};if(value==='monthly')return{months:1};if(value==='every two months')return{months:2};if(value==='quarterly')return{months:3};if(value==='semiannually'||value==='semi-annually')return{months:6};if(value==='annually'||value==='yearly')return{months:12};return null}
+const recurringDates=(baseDate:string,frequency:string|undefined,rangeStart:string,rangeEnd:string)=>{if(!baseDate)return[] as string[];const step=frequencyStep(frequency);if(!step)return baseDate>=rangeStart&&baseDate<=rangeEnd?[baseDate]:[];const dates:string[]=[];let cursor=baseDate,guard=0;while(cursor<rangeStart&&guard<180){cursor=step.days?addIsoDays(cursor,step.days):addIsoMonths(cursor,step.months??1);guard+=1}while(cursor<=rangeEnd&&guard<300){if(cursor>=rangeStart)dates.push(cursor);cursor=step.days?addIsoDays(cursor,step.days):addIsoMonths(cursor,step.months??1);guard+=1}return dates}
 
 export default function FinancialCalendar({onNotice}:Props){
   const [manualEvents,setManualEvents]=useFirestoreState<FinancialEvent[]>('calendar',[])
+  const [hiddenEventIds,setHiddenEventIds]=useFirestoreState<number[]>('calendarHiddenEventIds',[])
   const [bills]=useFirestoreState<BillRecord[]>('bills',[])
+  const [income]=useFirestoreState<IncomeRecord[]>('income',[])
   const [planning]=useFirestoreState<PlanRecord[]>('planning',[])
+  const [plannedPayments]=useFirestoreState<PlanRecord[]>('plannedPayments',[])
   const [wallet]=useWalletSnapshot<WalletSnapshot>({})
   const [viewMonth,setViewMonth]=useState(()=>new Date())
   const [selectedDate,setSelectedDate]=useState(()=>isoDate(new Date()))
@@ -37,16 +46,20 @@ export default function FinancialCalendar({onNotice}:Props){
   const key=monthKey(viewMonth)
   const generatedEvents=useMemo<FinancialEvent[]>(()=>{
     const currentMonthStart=new Date(viewMonth.getFullYear(),viewMonth.getMonth(),1,12)
+    const calendarStart=isoDate(currentMonthStart)
+    const calendarEnd=isoDate(new Date(viewMonth.getFullYear(),viewMonth.getMonth()+1,0,12))
     const nearbyMonths=[addMonths(currentMonthStart,-1),currentMonthStart,addMonths(currentMonthStart,1)]
-    const billEvents=bills.filter(bill=>billUsesIncludedCard(bill,wallet.cards??[])&&!['Paid','Skipped'].includes(bill.status)).flatMap(bill=>{
+    const billEvents=bills.filter(bill=>billUsesActiveCard(bill,wallet.cards??[])&&!['Paid','Skipped'].includes(bill.status)).flatMap(bill=>{
       const isCreditCard=/credit\s*card/i.test(bill.category)||Boolean(bill.statementDate)
-      const due:FinancialEvent={id:stableNumberId(`bill-due-${bill.id}-${bill.dueDate}`),day:Number(bill.dueDate.slice(-2)),date:bill.dueDate,name:bill.name.replace(/\s+statement$/i,''),type:isCreditCard?'Credit card due':'Bill due',amount:Number(bill.amount||0),tone:bill.status==='Overdue'?'overdue':isCreditCard?'credit-card':'expense',account:bill.account||'Select when paid',status:bill.status,recurring:bill.frequency||'One-time'}
-      const statement=bill.statementDate?{id:stableNumberId(`bill-statement-${bill.id}-${bill.statementDate}`),day:Number(bill.statementDate.slice(-2)),date:bill.statementDate,name:due.name,type:'Statement date' as EventType,amount:Number(bill.amount||0),tone:'credit-card' as Tone,account:due.account,status:'Statement ready',recurring:bill.frequency||'One-time'}:null
-      return statement?[statement,due]:[due]
+      const dates=recurringDates(bill.dueDate,bill.frequency,calendarStart,calendarEnd)
+      const dueEvents=dates.map(date=>({id:stableNumberId(`bill-due-${bill.id}-${date}`),day:Number(date.slice(-2)),date,name:bill.name.replace(/\s+statement$/i,''),type:isCreditCard?'Credit card due':'Bill due' as EventType,amount:Number(bill.amount||0),tone:bill.status==='Overdue'?'overdue':isCreditCard?'credit-card':'expense' as Tone,account:bill.account||'Select when paid',status:bill.status,recurring:bill.frequency||'One-time'}))
+      const statementEvents=bill.statementDate?recurringDates(bill.statementDate,bill.frequency,calendarStart,calendarEnd).map(date=>({id:stableNumberId(`bill-statement-${bill.id}-${date}`),day:Number(date.slice(-2)),date,name:bill.name.replace(/\s+statement$/i,''),type:'Statement date' as EventType,amount:Number(bill.amount||0),tone:'credit-card' as Tone,account:bill.account||'Select when paid',status:'Statement ready',recurring:bill.frequency||'One-time'})):[]
+      return [...statementEvents,...dueEvents]
     })
-    const planEvents=planning.filter(item=>!item.archived).map(item=>({id:stableNumberId(`plan-${item.id}-${item.date}`),day:Number(item.date.slice(-2)),date:item.date,name:item.name,type:item.type==='Income'?'Income':'Bill due' as EventType,amount:Number(item.amount||0),tone:item.type==='Income'?'income':'expense' as Tone,account:item.account||'Unassigned',status:item.status||'Expected',recurring:'Planned'}))
+    const incomeEvents=income.filter(item=>!isRemovedStatus(item.status||'')).flatMap(item=>recurringDates(item.expectedDate,item.frequency,calendarStart,calendarEnd).map(date=>({id:stableNumberId(`income-${item.id}-${date}`),day:Number(date.slice(-2)),date,name:item.source,type:'Income' as EventType,amount:Number(item.amount||0),tone:'income' as Tone,account:item.accountName||item.account||'Unassigned',status:item.status||'Expected',recurring:item.frequency||'One-time'})))
+    const planEvents=[...planning,...plannedPayments].filter(item=>!item.archived&&!isRemovedStatus(item.status||'')).flatMap(item=>{const baseDate=item.date||'';return recurringDates(baseDate,item.frequency,calendarStart,calendarEnd).map(date=>({id:stableNumberId(`plan-${item.id}-${date}`),day:Number(date.slice(-2)),date,name:item.name,type:item.type==='Income'?'Income':'Bill due' as EventType,amount:Number(item.amount||0),tone:item.type==='Income'?'income':'expense' as Tone,account:item.account||'Unassigned',status:item.status||'Expected',recurring:item.frequency||'Planned'}))})
     const statementEvents=(wallet.statements??[]).flatMap(statement=>{
-      const card=(wallet.cards??[]).find(item=>item.id===statement.cardId&&item.includeInNetBalance!==false)
+      const card=(wallet.cards??[]).find(item=>item.id===statement.cardId&&item.active!==false)
       if(!card)return []
       const name=card?.name??'Credit card'
       return [
@@ -54,13 +67,13 @@ export default function FinancialCalendar({onNotice}:Props){
         {id:stableNumberId(`wallet-due-${statement.id}-${statement.dueDate}`),day:Number(statement.dueDate.slice(-2)),date:statement.dueDate,name,type:'Credit card due' as EventType,amount:Number(statement.remainingDue??statement.statementBalance??0),tone:(statement.status==='Paid'?'completed':'credit-card') as Tone,account:name,status:statement.status||'Upcoming',recurring:'Monthly'}
       ]
     })
-    const cardEstimateEvents=(wallet.cards??[]).filter(card=>card.active!==false&&card.includeInNetBalance!==false&&!statementEvents.some(event=>event.account===card.name)).flatMap(card=>nearbyMonths.flatMap(month=>{const statementDate=dateFromDay(month,Number(card.statementDay||1)),dueDate=calculateDueDate({statementDay:Number(card.statementDay||1),dueDateRule:card.dueDateRule??'fixed-next-month',fixedDueDay:Number(card.fixedDueDay||1),daysAfterStatement:Number(card.daysAfterStatement||21),manualDueDate:card.manualDueDate,bank:card.bank??'',bankId:card.bankId??null} as never,statementDate);return [
+    const cardEstimateEvents=(wallet.cards??[]).filter(card=>card.active!==false&&!statementEvents.some(event=>event.account===card.name)).flatMap(card=>nearbyMonths.flatMap(month=>{const statementDate=dateFromDay(month,Number(card.statementDay||1)),dueDate=calculateDueDate({statementDay:Number(card.statementDay||1),dueDateRule:card.dueDateRule??'fixed-next-month',fixedDueDay:Number(card.fixedDueDay||1),daysAfterStatement:Number(card.daysAfterStatement||21),manualDueDate:card.manualDueDate,bank:card.bank??'',bankId:card.bankId??null} as never,statementDate);return [
       {id:stableNumberId(`card-est-statement-${card.id}-${monthKey(month)}`),day:Number(statementDate.slice(-2)),date:statementDate,name:card.name,type:'Statement date' as EventType,amount:Number(card.openingBalance||0),tone:'credit-card' as Tone,account:card.name,status:'Estimated',recurring:'Monthly'},
       {id:stableNumberId(`card-est-due-${card.id}-${monthKey(month)}`),day:Number(dueDate.slice(-2)),date:dueDate,name:card.name,type:'Credit card due' as EventType,amount:Number(card.openingBalance||0),tone:'credit-card' as Tone,account:card.name,status:'Estimated',recurring:'Monthly'}
     ]}))
-    return [...billEvents,...planEvents,...statementEvents,...cardEstimateEvents]
-  },[bills,planning,wallet,viewMonth])
-  const events=useMemo(()=>[...generatedEvents,...manualEvents].sort((a,b)=>eventDate(a).localeCompare(eventDate(b))||a.name.localeCompare(b.name)),[generatedEvents,manualEvents])
+    return [...billEvents,...incomeEvents,...planEvents,...statementEvents,...cardEstimateEvents]
+  },[bills,income,plannedPayments,planning,wallet,viewMonth])
+  const events=useMemo(()=>[...generatedEvents.filter(event=>!hiddenEventIds.includes(event.id)),...manualEvents].sort((a,b)=>eventDate(a).localeCompare(eventDate(b))||a.name.localeCompare(b.name)),[generatedEvents,hiddenEventIds,manualEvents])
   const monthEvents=events.filter(event=>eventDate(event).startsWith(key))
   const visible=filter==='All'?monthEvents:monthEvents.filter(event=>event.tone===filter)
   const selected=events.filter(event=>eventDate(event)===selectedDate)
@@ -87,7 +100,7 @@ export default function FinancialCalendar({onNotice}:Props){
       <aside className="surface day-agenda"><div className="agenda-date"><span><small>{selectedObject.toLocaleDateString('en-US',{month:'short'}).toUpperCase()}</small>{selectedObject.getDate()}</span><div><small>Selected date</small><h3>{selectedObject.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</h3></div></div><div className="agenda-list">{selected.length?selected.map(event=>{const Icon=icons[event.type];return <button onClick={()=>setEditing(event)} key={event.id}><span className={`agenda-icon ${event.tone}`}><Icon/></span><span><b>{event.name}</b><small>{event.type} · {event.account}</small><em>{event.status} · {event.recurring}</em></span><strong className={event.tone==='income'?'positive':''}>{event.tone==='income'?'+':''}{money(event.amount)}</strong><ChevronRight/></button>}):<div className="empty-date"><CalendarDays/><b>No financial activity</b><p>Add an income, payment, or transfer for this date.</p></div>}</div><button className="outline agenda-add" onClick={()=>setAdding(true)}><Plus/>Add item on {selectedObject.toLocaleDateString('en-US',{month:'short',day:'numeric'})}</button></aside>
     </div>
     {adding&&<CalendarItemModal date={selectedDate} onClose={()=>setAdding(false)} onSave={add}/>} 
-    {editing&&<CalendarItemModal event={editing} date={eventDate(editing)} onClose={()=>setEditing(null)} onSave={updated=>{setManualEvents(current=>current.some(item=>item.id===updated.id)?current.map(item=>item.id===updated.id?updated:item):[...current,updated]);setSelectedDate(eventDate(updated));setEditing(null);onNotice(`${updated.name} updated`)}} onDelete={()=>{setManualEvents(current=>current.filter(item=>item.id!==editing.id));setEditing(null);onNotice(`${editing.name} deleted`)}}/>}
+    {editing&&<CalendarItemModal event={editing} date={eventDate(editing)} onClose={()=>setEditing(null)} onSave={updated=>{setHiddenEventIds(current=>current.includes(editing.id)?current:[...current,editing.id]);setManualEvents(current=>current.some(item=>item.id===updated.id)?current.map(item=>item.id===updated.id?updated:item):[...current,updated]);setSelectedDate(eventDate(updated));setEditing(null);onNotice(`${updated.name} updated`)}} onDelete={()=>{setHiddenEventIds(current=>current.includes(editing.id)?current:[...current,editing.id]);setManualEvents(current=>current.filter(item=>item.id!==editing.id));setEditing(null);onNotice(`${editing.name} removed from calendar`)}}/>}
   </section>
 }
 
