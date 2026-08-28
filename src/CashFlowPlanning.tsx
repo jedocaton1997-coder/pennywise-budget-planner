@@ -622,6 +622,7 @@ export default function CashFlowPlanning() {
   const [wallet, saveWallet] = useWalletSnapshot<WalletShape>({ accounts: [], cards: [], accountTransactions: [], transactions: [] });
   const autoSyncSignature = useRef("");
   const recentlyAppliedAutoSyncs = useRef<Map<string, number>>(new Map());
+  const incomeLedgerRepairsInFlight = useRef<Set<string>>(new Set());
 
   const flow = useMemo(() => {
     const expenseLookupStart = addMonths(incomeStart < expenseStart ? incomeStart : expenseStart, -12);
@@ -765,6 +766,7 @@ export default function CashFlowPlanning() {
               amount: Number(item.amount || 0),
               status: item.status,
               linkedTransactionId: item.linkedTransactionId,
+              actualDate: item.actualDate || item.receivedDate,
               actualAmount: actualAmountForOccurrence({
                 status: item.status,
                 expectedStatus: "received",
@@ -795,6 +797,7 @@ export default function CashFlowPlanning() {
             amount: Number(item.amount || 0),
             status: item.status,
             linkedTransactionId: item.linkedTransactionId,
+            actualDate: item.actualDate || item.receivedDate,
             actualAmount: actualAmountForOccurrence({
               status: item.status,
               expectedStatus: "received",
@@ -1500,6 +1503,12 @@ export default function CashFlowPlanning() {
       setIncome((current) =>
         mapOnlyWhenChanged(current, (row) => {
           const match = incomeMatches.find(({ item }) => String(item.incomeRecordId) === String(row.id));
+          // A recurring plan row produces many dated occurrences, while these
+          // legacy fields can describe only one of them. Persisting an
+          // auto-match here overwrites the previously received occurrence and
+          // makes that receipt disappear after reload. Recurring actuals are
+          // instead read from their occurrence-specific wallet transactions.
+          if (match && frequencyStep(row.frequency)) return row;
           return match
             ? {
                 ...row,
@@ -1519,6 +1528,7 @@ export default function CashFlowPlanning() {
           const match = incomeMatches.find(({ item }) =>
             item.plannedRecordId !== undefined && String(item.plannedRecordId) === String(row.id),
           );
+          if (match && frequencyStep(row.frequency)) return row;
           return match
             ? {
                 ...row,
@@ -1584,6 +1594,65 @@ export default function CashFlowPlanning() {
       );
     }
   }, [bills, flow.incomeItems, flow.outflowItems, income, planned, plannedPayments, setBills, setIncome, setPlanned, setPlannedPayments, wallet.accountTransactions, wallet.accounts, wallet.cards, wallet.transactions]);
+
+  useEffect(() => {
+    const existingTransactions = wallet.accountTransactions ?? [];
+    const repairs = flow.incomeItems.flatMap((item) => {
+      if (item.actualAmount === undefined || item.actualAmount === null) return [];
+
+      const accountLink = item.accountName ? resolveAccountLink(item.accountName, wallet) : null;
+      if (!accountLink || accountLink.accountKind !== "account" || accountLink.accountId === undefined) return [];
+
+      const transactionDate = item.actualDate || item.date;
+      const marker = cashFlowKey(item);
+      const repairKey = `${marker}|${String(accountLink.accountId)}|${transactionDate}|${Number(item.actualAmount).toFixed(2)}`;
+      const alreadyRecorded = existingTransactions.some((transaction) => {
+        if (transaction.notes?.includes(marker)) return true;
+        if (item.linkedTransactionId !== undefined && String(transaction.id) === String(item.linkedTransactionId)) return true;
+        return (
+          String(transaction.accountId) === String(accountLink.accountId) &&
+          transaction.type === "Income" &&
+          transaction.date === transactionDate &&
+          cents(transaction.amount) === cents(item.actualAmount) &&
+          normalized(transaction.description) === normalized(item.title)
+        );
+      });
+
+      if (alreadyRecorded || incomeLedgerRepairsInFlight.current.has(repairKey)) return [];
+      incomeLedgerRepairsInFlight.current.add(repairKey);
+      return [{ item, accountLink, transactionDate, marker, repairKey }];
+    });
+
+    if (!repairs.length) return;
+
+    const balanceCredits = new Map<string, number>();
+    repairs.forEach(({ item, accountLink }) => {
+      const accountId = String(accountLink.accountId);
+      balanceCredits.set(accountId, (balanceCredits.get(accountId) || 0) + Number(item.actualAmount || 0));
+    });
+
+    saveWallet({
+      ...wallet,
+      accountTransactions: [
+        ...existingTransactions,
+        ...repairs.map(({ item, accountLink, transactionDate, marker }) => ({
+          id: `cashflow-income-${item.incomeRecordId ?? item.plannedRecordId ?? item.id}-${item.date}`,
+          accountId: accountLink.accountId,
+          date: transactionDate,
+          description: item.title,
+          type: "Income",
+          category: item.category,
+          amount: Number(item.actualAmount || 0),
+          status: "Posted",
+          notes: `${marker} · Repaired from recorded Cash Flow actual`,
+        })),
+      ],
+      accounts: (wallet.accounts ?? []).map((account) => {
+        const credit = balanceCredits.get(String(account.id)) || 0;
+        return credit ? { ...account, balance: Number(account.balance || 0) + credit } : account;
+      }),
+    });
+  }, [flow.incomeItems, wallet]);
 
   const expectedExpenses = total(flow.expectedExpenseComparisonItems);
   const netExpected = flow.expectedIncome - expectedExpenses;
@@ -2094,6 +2163,7 @@ export default function CashFlowPlanning() {
           defaultDate={incomeStart}
           accounts={wallet.accounts ?? []}
           income={editingIncome}
+          occurrence={editingFlowItem ?? undefined}
           onClose={() => {setEditingIncome(null);setEditingFlowItem(null);}}
           onSave={(record) => {
             setIncome((current) => current.map((item) => (String(item.id) === String(record.id) ? record : item)));
@@ -2116,6 +2186,7 @@ export default function CashFlowPlanning() {
         <ExpectedPlannedIncomeModal
           defaultDate={incomeStart}
           income={editingPlannedIncome}
+          occurrence={editingFlowItem ?? undefined}
           onClose={() => {setEditingPlannedIncome(null);setEditingFlowItem(null);}}
           onSave={(record) => {
             setPlanned((current) => current.map((item) => (item.id === record.id ? record : item)));
@@ -2485,6 +2556,7 @@ function ExpectedIncomeModal({
   defaultDate,
   accounts: _accounts,
   income,
+  occurrence,
   onClose,
   onSave,
   onDelete,
@@ -2493,6 +2565,7 @@ function ExpectedIncomeModal({
   defaultDate: string;
   accounts: Array<{ id: number | string; name: string }>;
   income?: IncomeRecord;
+  occurrence?: FlowItem;
   onClose: () => void;
   onSave: (record: IncomeRecord) => void;
   onDelete?: () => void;
@@ -2503,8 +2576,8 @@ function ExpectedIncomeModal({
     if (!form.reportValidity()) return;
     const data = new FormData(form);
     onMarkReceived?.({
-      amount: Number(data.get("actualAmount") || data.get("amount") || income?.amount || 0),
-      date: String(data.get("actualDate") || data.get("expectedDate") || income?.expectedDate || defaultDate),
+      amount: Number(data.get("actualAmount") || data.get("amount") || occurrence?.amount || income?.amount || 0),
+      date: String(data.get("actualDate") || occurrence?.date || data.get("expectedDate") || income?.expectedDate || defaultDate),
       accountName: String(data.get("actualAccount") || data.get("account") || income?.accountName || income?.account || "").trim(),
     });
   };
@@ -2598,8 +2671,8 @@ function ExpectedIncomeModal({
             <div className="cfp-edit-actual-box">
               <b>Record actual income</b>
               <div className="form-grid">
-                <label>Actual amount<input name="actualAmount" type="number" min="0" step="0.01" inputMode="decimal" defaultValue={income?.actualAmount ?? income?.receivedAmount ?? ""} /></label>
-                <label>Received date<input name="actualDate" type="date" defaultValue={income?.actualDate || income?.receivedDate || income?.expectedDate || defaultDate} /></label>
+                <label>Actual amount<input name="actualAmount" type="number" min="0" step="0.01" inputMode="decimal" defaultValue={occurrence?.actualAmount ?? ""} /></label>
+                <label>Received date<input name="actualDate" type="date" defaultValue={(occurrence?.actualAmount !== undefined ? occurrence.actualDate : occurrence?.date) || income?.expectedDate || defaultDate} /></label>
               </div>
               <label>Receiving account<ConnectedAccountSelect name="actualAccount" required showCards={false} showOther={false} defaultValue={income?.accountName || income?.account || ""} /></label>
             </div>
@@ -2622,6 +2695,7 @@ function ExpectedIncomeModal({
 function ExpectedPlannedIncomeModal({
   defaultDate,
   income,
+  occurrence,
   onClose,
   onSave,
   onDelete,
@@ -2629,6 +2703,7 @@ function ExpectedPlannedIncomeModal({
 }: {
   defaultDate: string;
   income: PlannedRecord;
+  occurrence?: FlowItem;
   onClose: () => void;
   onSave: (record: PlannedRecord) => void;
   onDelete?: () => void;
@@ -2638,8 +2713,8 @@ function ExpectedPlannedIncomeModal({
     if (!form.reportValidity()) return;
     const data = new FormData(form);
     onMarkReceived?.({
-      amount: Number(data.get("actualAmount") || data.get("amount") || income.amount || 0),
-      date: String(data.get("actualDate") || data.get("date") || income.expectedDate || defaultDate),
+      amount: Number(data.get("actualAmount") || data.get("amount") || occurrence?.amount || income.amount || 0),
+      date: String(data.get("actualDate") || occurrence?.date || data.get("date") || income.expectedDate || defaultDate),
       accountName: String(data.get("actualAccount") || data.get("account") || income.accountName || income.account || "").trim(),
     });
   };
@@ -2711,8 +2786,8 @@ function ExpectedPlannedIncomeModal({
           <div className="cfp-edit-actual-box">
             <b>Record actual income</b>
             <div className="form-grid">
-              <label>Actual amount<input name="actualAmount" type="number" min="0" step="0.01" inputMode="decimal" defaultValue={income.actualAmount ?? income.receivedAmount ?? ""} /></label>
-              <label>Received date<input name="actualDate" type="date" defaultValue={income.actualDate || income.receivedDate || income.expectedDate || defaultDate} /></label>
+              <label>Actual amount<input name="actualAmount" type="number" min="0" step="0.01" inputMode="decimal" defaultValue={occurrence?.actualAmount ?? ""} /></label>
+              <label>Received date<input name="actualDate" type="date" defaultValue={(occurrence?.actualAmount !== undefined ? occurrence.actualDate : occurrence?.date) || income.expectedDate || defaultDate} /></label>
             </div>
             <label>Receiving account<ConnectedAccountSelect name="actualAccount" required showCards={false} showOther={false} defaultValue={income.accountName || income.account || ""} /></label>
           </div>
