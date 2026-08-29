@@ -1025,31 +1025,10 @@ export default function CashFlowPlanning() {
       walletIncomeTransactionsForActuals,
       { requireExactDate: true },
     );
-    const unmatchedIncomeItems: FlowItem[] = walletIncomeTransactionsForActuals
-      .filter((transaction) => !linkedCashFlowTransactionIds.has(String(transaction.transactionId)))
-      .filter((transaction) => !incomeItemsForCycle.some((item) =>
-        transactionMatchesPlan(transaction, item, { requireExactDate: true }),
-      ))
-      .map((transaction) => ({
-        id: `wallet-income-${String(transaction.transactionId)}`,
-        title: transaction.description || transaction.category || "Income received",
-        category: transaction.category || "Income",
-        date: transaction.date,
-        amount: 0,
-        actualAmount: Number(transaction.amount || 0),
-        actualDate: transaction.date,
-        status: "Received",
-        linkedTransactionId: transaction.transactionId,
-        accountId: transaction.accountId,
-        accountKind: transaction.accountKind,
-        accountName: transaction.accountName,
-        source: "Income" as const,
-      }))
-      .filter((item) => !deletedItemKeys.has(cashFlowItemKey(item)));
-    // Keep valid actual income visible even when no expected-income row was
-    // created for it. This does not change expected totals (the fallback row
-    // has an expected amount of zero) and prevents real receipts from vanishing.
-    const visibleIncomeItems = [...visibleIncomeItemsWithPlans, ...unmatchedIncomeItems]
+    // Expected Income contains only planned/recurring income rows. Unmatched
+    // wallet receipts still contribute to Actual totals and transaction-based
+    // comparisons below, but must not be manufactured into zero-expected rows.
+    const visibleIncomeItems = visibleIncomeItemsWithPlans
       .sort((a, b) => a.date.localeCompare(b.date));
 
     const outflowItemsForCycle = [...billItems, ...runningCardBalanceForecasts, ...plannedExpenseItems, ...savingsItems]
