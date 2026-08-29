@@ -9,6 +9,8 @@ import {
   latestClosedStatementDate,
   minimumDue as calculateMinimumDue,
   previousStatementDate,
+  reconciledStatementDue,
+  reconciledStatementStatus,
   statementCutoffDate,
   statementFromCycle,
 } from "../domain/creditCardEngine";
@@ -488,13 +490,13 @@ function statementAmountDue({
   const existingPayments = amountOf(existingStatement?.paymentsApplied);
 
   const rebuiltBalance = Math.max(0, amountOf(rebuiltStatement.statementBalance));
-  if (existingStatement && isInactiveStatus(existingStatement.status)) return 0;
 
   // For the currently generated statement, the transaction ledger is the source
-  // of truth. Do not fall back to an older saved statement balance after the user
-  // edits or deletes card transactions, otherwise Bills/Cash Flow keep showing a
-  // ghost amount that no longer exists.
-  return Math.max(0, rebuiltBalance - Math.max(existingPayments, paidAfterStatement));
+  // of truth. A generated statement can initially close at zero and be saved as
+  // Paid before all of its posted activity has synchronized. Do not let that stale
+  // status suppress a subsequently rebuilt balance. Genuine payments remain
+  // authoritative through paymentsApplied/paidAfterStatement.
+  return reconciledStatementDue(rebuiltBalance, existingPayments, paidAfterStatement);
 }
 
 export function useCreditCardBillSync() {
@@ -620,14 +622,7 @@ export function useCreditCardBillSync() {
           minimumDue,
           remainingDue,
           paymentsApplied,
-          status:
-            remainingDue <= 0
-              ? "Paid"
-              : existingStatement?.status === "Paid" &&
-                  amountOf(existingStatement.statementBalance) > 0 &&
-                  sameAmount(existingStatement.remainingDue, 0)
-                ? "Paid"
-                : "Closed",
+          status: reconciledStatementStatus(remainingDue, paymentsApplied),
           generatedAutomatically: true,
         };
 
@@ -764,13 +759,8 @@ export function useCreditCardBillSync() {
         changed = true;
       } else {
         const existing = next[index];
-        const keepExistingPaid =
-          existing.status === "Paid" &&
-          amountOf(existing.amount) > 0 &&
-          sameAmount(existing.amount, bill.amount);
         const merged = {
           ...bill,
-          status: keepExistingPaid ? existing.status : bill.status,
           account: existing.account,
           autopayAccount: existing.autopayAccount || bill.autopayAccount,
           notes: existing.notes || bill.notes,
@@ -860,14 +850,9 @@ export function useCreditCardBillSync() {
         walletChanged = true;
       } else {
         const existing = mergedStatements[index];
-        const keepExistingPaid =
-          existing.status === "Paid" &&
-          amountOf(existing.statementBalance) > 0 &&
-          sameAmount(existing.remainingDue, 0);
         const merged = {
           ...existing,
           ...statement,
-          status: keepExistingPaid ? "Paid" : statement.status,
         };
         if (JSON.stringify(existing) !== JSON.stringify(merged)) {
           mergedStatements[index] = merged;
