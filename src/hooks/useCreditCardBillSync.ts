@@ -3,6 +3,7 @@ import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { firebaseAuth, firestore } from "../lib/firebase";
 import {
   applyPayment,
+  allocatedPaymentsForStatement,
   adjustToWeekday,
   calculateDueDate,
   ensureDueDateAfterStatement,
@@ -446,25 +447,6 @@ function postedCardActivity(
   return { activity, paid };
 }
 
-function postedPaymentsAfterStatement(
-  wallet: AnyRecord,
-  card: AnyRecord,
-  statementDate: string,
-) {
-  const cardId = String(card.id);
-  const todayText = rawIso(new Date());
-
-  return (wallet.payments ?? [])
-    .filter(
-      (payment: AnyRecord) =>
-        String(payment.cardId) === cardId &&
-        payment.status === "Posted" &&
-        payment.date > statementDate &&
-        payment.date <= todayText,
-    )
-    .reduce((sum: number, payment: AnyRecord) => sum + amountOf(payment.amount), 0);
-}
-
 function paymentsForStatement(wallet: AnyRecord, cardId: unknown, statementId: unknown) {
   return (wallet.payments ?? [])
     .filter(
@@ -476,27 +458,6 @@ function paymentsForStatement(wallet: AnyRecord, cardId: unknown, statementId: u
         ),
     )
     .sort((left: AnyRecord, right: AnyRecord) => String(left.date).localeCompare(String(right.date)));
-}
-
-function statementAmountDue({
-  existingStatement,
-  rebuiltStatement,
-  paidAfterStatement,
-}: {
-  existingStatement?: AnyRecord;
-  rebuiltStatement: AnyRecord;
-  paidAfterStatement: number;
-}) {
-  const existingPayments = amountOf(existingStatement?.paymentsApplied);
-
-  const rebuiltBalance = Math.max(0, amountOf(rebuiltStatement.statementBalance));
-
-  // For the currently generated statement, the transaction ledger is the source
-  // of truth. A generated statement can initially close at zero and be saved as
-  // Paid before all of its posted activity has synchronized. Do not let that stale
-  // status suppress a subsequently rebuilt balance. Genuine payments remain
-  // authoritative through paymentsApplied/paidAfterStatement.
-  return reconciledStatementDue(rebuiltBalance, existingPayments, paidAfterStatement);
 }
 
 export function useCreditCardBillSync() {
@@ -563,11 +524,6 @@ export function useCreditCardBillSync() {
           cycleEnd,
         );
         const paymentDue = dueDate(card, statementDate);
-        const paidAfterStatement = postedPaymentsAfterStatement(
-          effectiveWallet,
-          card,
-          statementDate,
-        );
         const reminderDate = new Date(`${paymentDue}T12:00:00`);
         reminderDate.setDate(reminderDate.getDate() - 7);
 
@@ -596,19 +552,13 @@ export function useCreditCardBillSync() {
           existingStatement?.id ?? stableId(sourceKey),
         );
 
-        const amount = statementAmountDue({
-          existingStatement,
-          rebuiltStatement,
-          paidAfterStatement,
-        });
-
-        const paymentsApplied = Math.max(
-          amountOf(existingStatement?.paymentsApplied),
-          paidAfterStatement,
-        );
         const statementBalance = Math.max(0, amountOf(rebuiltStatement.statementBalance));
-        const remainingDue = amount;
         const statementPayments = paymentsForStatement(effectiveWallet, card.id, rebuiltStatement.id);
+        // A payment belongs only to the statement named by its allocation.
+        // Never carry a prior statement's saved paid amount into a newer cycle.
+        const paymentsApplied = allocatedPaymentsForStatement(statementPayments as never, rebuiltStatement.id);
+        const amount = reconciledStatementDue(statementBalance, paymentsApplied);
+        const remainingDue = amount;
         const latestPayment = statementPayments.at(-1);
         const actualAmount = Math.min(statementBalance, paymentsApplied);
         const minimumDue = amount > 0
@@ -740,14 +690,16 @@ export function useCreditCardBillSync() {
       const sourceKey = String(bill.sourceKey ?? "");
       const isGeneratedCreditCardBill = /^credit-card-statement:[^:]+:/.test(sourceKey);
       if (!isGeneratedCreditCardBill) return true;
-      // A settled statement is historical financial data. Keep it in Firestore so
-      // Cash Flow can continue showing its Expected and Actual amounts in the
-      // original cycle, while active bill views hide it by its Paid status.
-      if (String(bill.status ?? "").toLowerCase() === "paid") return true;
       const currentGeneratedBill = generatedBySourceKey.get(sourceKey);
       if (currentGeneratedBill) {
-        return amountOf(currentGeneratedBill.amount) > 0 && !isInactiveStatus(currentGeneratedBill.status);
+        // The current generated statement is authoritative. Remove a stale paid
+        // bill when its rebuilt statement has neither a balance nor a payment;
+        // otherwise Cash Flow incorrectly shows a previous payment as Actual.
+        return amountOf(currentGeneratedBill.amount) > 0 || amountOf(currentGeneratedBill.actualAmount) > 0;
       }
+      // A settled historical statement remains available in its original Cash
+      // Flow cycle after it is no longer the current generated source.
+      if (String(bill.status ?? "").toLowerCase() === "paid") return true;
       return amountOf(bill.amount) > 0 && !isInactiveStatus(bill.status);
     });
     let changed = next.length !== bills.length;
