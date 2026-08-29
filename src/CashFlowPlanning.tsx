@@ -21,6 +21,7 @@ import { useFirestoreState } from "./hooks/useFirestoreState";
 import { useWalletSnapshot } from "./hooks/useWalletSnapshot";
 import type { CategoryBudget } from "./domain/planningEngine";
 import {
+  allocatedPaymentsForStatement,
   computeCard,
   type CardConfig,
   type CardPayment,
@@ -52,6 +53,7 @@ type BillRecord = {
   accountName?: string;
   linkedTransactionId?: number | string;
   dueDate: string;
+  statementDate?: string;
   recurrenceStartDate?: string;
   frequency?: string;
   status?: string;
@@ -124,7 +126,7 @@ type WalletShape = {
     includeInNetBalance?: boolean;
     excludeFromCashFlow?: boolean | string | number;
   }>;
-  statements?: Array<{ cardId?: number | string; statementDate?: string; statementBalance?: number; remainingDue?: number; status?: string }>;
+  statements?: Array<{ id: number | string; cardId?: number | string; statementDate?: string; dueDate?: string; statementBalance?: number; remainingDue?: number; status?: string }>;
   payments?: Array<{ id?: number | string; cardId: number | string; account?: string; date: string; amount: number; option?: string; status: "Scheduled" | "Posted"; notes?: string; allocations?: Array<{ statementId?: number | string; cycle: "statement" | "current-cycle" | "credit"; amount: number; date: string }> }>;
   accountTransactions?: Array<{ id: number | string; accountId?: number | string; date: string; description?: string; type: string; category?: string; amount: number; status?: string; notes?: string }>;
   transactions?: Array<{ id?: number | string; cardId: number | string; transactionDate?: string; postedDate: string; description?: string; type: string; category?: string; amount: number; status: string; notes?: string; expenseCounted?: boolean }>;
@@ -148,6 +150,7 @@ type FlowItem = {
   accountName?: string;
   linkedTransactionId?: number | string;
   forecastStatus?: string;
+  statementPaymentOnly?: boolean;
   source: "Income" | "Bill" | "Expected expense" | "Savings" | "Subscription";
 };
 
@@ -481,6 +484,39 @@ const expectedBillAmount = (bill: BillRecord, wallet: WalletShape) => {
   return Number(bill.amount || 0);
 };
 
+const statementForBill = (bill: BillRecord, wallet: WalletShape) => {
+  const source = String(bill.sourceKey ?? "").match(/^credit-card-statement:([^:]+):([\d-]+)$/);
+  const cardId = source?.[1] ?? (wallet.cards ?? []).find(
+    (card) => normalized(card.name || "") === normalized(bill.name || ""),
+  )?.id;
+  if (cardId === undefined) return undefined;
+
+  const cardStatements = (wallet.statements ?? []).filter(
+    (statement) => String(statement.cardId) === String(cardId),
+  );
+  if (source) {
+    const sourceStatement = cardStatements.find((statement) => statement.statementDate === source[2]);
+    const newestForDueDate = cardStatements
+      .filter((statement) => statement.dueDate === bill.dueDate)
+      .sort((left, right) => String(right.statementDate || "").localeCompare(String(left.statementDate || "")))[0];
+    // A concrete/manual payment due date can be reused while the next
+    // statement closes. Prefer the newest statement carrying that due date,
+    // even when a legacy Bill still points at the prior statement source key.
+    // The prior statement and its payment remain intact in card history, but
+    // cannot populate Actual for the newer obligation.
+    if (
+      newestForDueDate &&
+      String(newestForDueDate.statementDate || "") > String(sourceStatement?.statementDate || "")
+    ) return newestForDueDate;
+    return sourceStatement;
+  }
+  // Older generated bills may have lost sourceKey. Their card name and exact
+  // payment due date still identify the closed statement safely.
+  return cardStatements
+    .filter((statement) => statement.dueDate === bill.dueDate)
+    .sort((left, right) => String(right.statementDate || "").localeCompare(String(left.statementDate || "")))[0];
+};
+
 const frequencyStep = (frequency = ""): { days?: number; months?: number } | null => {
   const value = frequency.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
   if (!value || value === "one-time" || value === "one time") return null;
@@ -712,6 +748,7 @@ export default function CashFlowPlanning() {
       transactions.forEach((transaction) => {
         const explicitlyLinkedItem = items.find((item) =>
           item.source !== "Savings" &&
+          !item.statementPaymentOnly &&
           transactionExplicitlyLinksItem(transaction, item) &&
           (isCashFlowGeneratedTransaction(transaction) || !requireExactDate || transaction.date === item.date),
         );
@@ -725,6 +762,7 @@ export default function CashFlowPlanning() {
         const bestMatch = explicitlyLinkedItem ?? items
           .filter((item) =>
             item.source !== "Savings" &&
+            !item.statementPaymentOnly &&
             !hasActualAmount(item) &&
             transactionMatchesPlan(transaction, item, { requireExactDate }),
           )
@@ -814,7 +852,46 @@ export default function CashFlowPlanning() {
         }),
     ];
 
+    // A manually configured due date can temporarily be shared by two closed
+    // statements for the same card. Cash Flow represents the obligation for
+    // that due date once, using the newest statement. Otherwise an older paid
+    // statement can win the row de-duplication and make the newer unpaid bill
+    // appear paid (for example, an August payment shown against September 17).
+    const preferredCardStatementBills = new Map<string, { bill: BillRecord; statementDate: string }>();
+    for (const bill of bills) {
+      const statement = statementForBill(bill, wallet);
+      const isKnownCardBill =
+        normalized(bill.category || "") === "credit card" &&
+        (wallet.cards ?? []).some(
+          (card) => normalized(card.name || "") === normalized(bill.name || ""),
+        );
+      if (!isCreditCardStatementBill(bill) && !statement && !isKnownCardBill) continue;
+
+      const cardId = statement?.cardId ?? (wallet.cards ?? []).find(
+        (card) => normalized(card.name || "") === normalized(bill.name || ""),
+      )?.id ?? normalized(bill.name || "");
+      const key = `${String(cardId)}|${String(bill.dueDate || "")}`;
+      const statementDate = String(statement?.statementDate || bill.statementDate || "");
+      const preferred = preferredCardStatementBills.get(key);
+      if (!preferred || statementDate > preferred.statementDate) {
+        preferredCardStatementBills.set(key, { bill, statementDate });
+      }
+    }
+
     const billItems: FlowItem[] = bills
+      .filter((bill) => {
+        const statement = statementForBill(bill, wallet);
+        const isKnownCardBill =
+          normalized(bill.category || "") === "credit card" &&
+          (wallet.cards ?? []).some(
+            (card) => normalized(card.name || "") === normalized(bill.name || ""),
+          );
+        if (!isCreditCardStatementBill(bill) && !statement && !isKnownCardBill) return true;
+        const cardId = statement?.cardId ?? (wallet.cards ?? []).find(
+          (card) => normalized(card.name || "") === normalized(bill.name || ""),
+        )?.id ?? normalized(bill.name || "");
+        return preferredCardStatementBills.get(`${String(cardId)}|${String(bill.dueDate || "")}`)?.bill === bill;
+      })
       // Net-worth exclusion must not hide payment obligations. Active cards
       // still need to appear in Bills and Cash Flow even when excluded from
       // combined balance calculations.
@@ -830,7 +907,31 @@ export default function CashFlowPlanning() {
       .filter((bill) => !recurringBillIsRemoved(bill))
       .filter((bill) => expectedBillAmount(bill, wallet) > 0 || itemIsPaid(bill))
       .flatMap((bill) => {
-        const paymentHistory = bill.paymentHistory ?? [];
+        const statement = statementForBill(bill, wallet);
+        const isKnownCardBill =
+          normalized(bill.category || "") === "credit card" &&
+          (wallet.cards ?? []).some(
+            (card) => normalized(card.name || "") === normalized(bill.name || ""),
+          );
+        const isStatementObligation = isCreditCardStatementBill(bill) || Boolean(statement) || isKnownCardBill;
+        // Legacy card payments can contain an allocation to a newer statement.
+        // Only a payment posted on/after this statement date may become Actual.
+        const statementActual = statement
+          ? allocatedPaymentsForStatement(
+              (wallet.payments ?? []).filter(
+                (payment) =>
+                  String(payment.cardId) === String(statement.cardId) &&
+                  String(payment.status).toLowerCase() === "posted",
+              ) as CardPayment[],
+              statement.id,
+              statement.statementDate,
+              todayIso(),
+            )
+          : 0;
+        // Statement Actuals come exclusively from their linked card-payment
+        // allocation. Legacy bill history is not statement-scoped and can
+        // otherwise make an unpaid newer statement look fully paid.
+        const paymentHistory = isStatementObligation ? [] : (bill.paymentHistory ?? []);
         const historyByDueDate = new Map(
           paymentHistory.map((record) => [record.relatedBillDetails?.dueDate || bill.dueDate, record]),
         );
@@ -845,6 +946,8 @@ export default function CashFlowPlanning() {
           const account = explicitPaymentAccount ? resolveAccountLink(explicitPaymentAccount, wallet) : {};
           const actualAmount = historicalPayment
             ? Number(historicalPayment.amount || 0)
+            : isStatementObligation
+              ? (statementActual > 0 ? statementActual : undefined)
             : actualAmountForOccurrence({
                 status: bill.status,
                 expectedStatus: "paid",
@@ -871,6 +974,7 @@ export default function CashFlowPlanning() {
             linkedTransactionId: historicalPayment?.id || bill.linkedTransactionId || bill.paymentTransactionId,
             actualAmount,
             actualDate: historicalPayment?.paymentDate || bill.actualDate || bill.paymentDate,
+            statementPaymentOnly: isStatementObligation,
             ...account,
             source: isSubscription(bill.category, bill.name) ? ("Subscription" as const) : ("Bill" as const),
           };
@@ -1446,7 +1550,9 @@ export default function CashFlowPlanning() {
     ));
 
     const expenseMatches = onlyFreshMatches(matchOnce(
-      flow.outflowItems.filter((item) => item.source !== "Savings" && item.actualAmount === undefined),
+      flow.outflowItems.filter(
+        (item) => item.source !== "Savings" && !item.statementPaymentOnly && item.actualAmount === undefined,
+      ),
       walletExpenseTransactions,
       { requireExactDate: true },
     ));

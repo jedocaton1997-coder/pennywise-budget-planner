@@ -447,12 +447,13 @@ function postedCardActivity(
   return { activity, paid };
 }
 
-function paymentsForStatement(wallet: AnyRecord, cardId: unknown, statementId: unknown) {
+function paymentsForStatement(wallet: AnyRecord, cardId: unknown, statementId: unknown, statementDate = "") {
   return (wallet.payments ?? [])
     .filter(
       (payment: AnyRecord) =>
         String(payment.cardId) === String(cardId) &&
         payment.status === "Posted" &&
+        (!statementDate || String(payment.date || "") >= statementDate) &&
         (payment.allocations ?? []).some(
           (allocation: AnyRecord) => String(allocation.statementId) === String(statementId),
         ),
@@ -553,10 +554,20 @@ export function useCreditCardBillSync() {
         );
 
         const statementBalance = Math.max(0, amountOf(rebuiltStatement.statementBalance));
-        const statementPayments = paymentsForStatement(effectiveWallet, card.id, rebuiltStatement.id);
+        const statementPayments = paymentsForStatement(
+          effectiveWallet,
+          card.id,
+          rebuiltStatement.id,
+          rebuiltStatement.statementDate,
+        );
         // A payment belongs only to the statement named by its allocation.
         // Never carry a prior statement's saved paid amount into a newer cycle.
-        const paymentsApplied = allocatedPaymentsForStatement(statementPayments as never, rebuiltStatement.id);
+        const paymentsApplied = allocatedPaymentsForStatement(
+          statementPayments as never,
+          rebuiltStatement.id,
+          rebuiltStatement.statementDate,
+          todayText,
+        );
         const amount = reconciledStatementDue(statementBalance, paymentsApplied);
         const remainingDue = amount;
         const latestPayment = statementPayments.at(-1);
@@ -625,17 +636,22 @@ export function useCreditCardBillSync() {
       if (currentSourceKeys.has(sourceKey)) return [];
 
       const remainingDue = Math.max(0, amountOf(statement.remainingDue));
-      const statementPayments = paymentsForStatement(effectiveWallet, card.id, statement.id);
-      const latestPayment = statementPayments.at(-1);
-      const allocatedPayments = statementPayments.reduce(
-        (total: number, payment: AnyRecord) =>
-          total +
-          (payment.allocations ?? [])
-            .filter((allocation: AnyRecord) => String(allocation.statementId) === String(statement.id))
-            .reduce((sum: number, allocation: AnyRecord) => sum + amountOf(allocation.amount), 0),
-        0,
+      const statementPayments = paymentsForStatement(
+        effectiveWallet,
+        card.id,
+        statement.id,
+        statement.statementDate,
       );
-      const paymentsApplied = Math.max(amountOf(statement.paymentsApplied), allocatedPayments);
+      const latestPayment = statementPayments.at(-1);
+      const allocatedPayments = allocatedPaymentsForStatement(
+        statementPayments as never,
+        statement.id,
+        statement.statementDate,
+        todayText,
+      );
+      // The linked payment allocation is authoritative. A persisted status or
+      // paymentsApplied total can be stale after a legacy allocation repair.
+      const paymentsApplied = allocatedPayments;
       const actualAmount = Math.min(statementBalance, paymentsApplied);
       const isPaid = remainingDue <= 0 || String(statement.status).toLowerCase() === "paid";
       if (!isPaid && remainingDue <= 0) return [];
@@ -705,7 +721,16 @@ export function useCreditCardBillSync() {
     let changed = next.length !== bills.length;
 
     for (const bill of generated) {
-      const index = next.findIndex((item) => item.sourceKey === bill.sourceKey);
+      const index = next.findIndex((item) =>
+        item.sourceKey === bill.sourceKey ||
+        String(item.id) === String(bill.id) ||
+        (
+          !item.sourceKey &&
+          String(item.category ?? "").toLowerCase() === "credit card" &&
+          String(item.name ?? "").trim().toLowerCase() === String(bill.name ?? "").trim().toLowerCase() &&
+          String(item.dueDate ?? "") === String(bill.dueDate ?? "")
+        ),
+      );
       if (index < 0) {
         next.push(bill);
         changed = true;

@@ -28,3 +28,24 @@ const priorStatementPayment = [{
 }];
 equal(allocatedPaymentsForStatement(priorStatementPayment, 824), 0, "prior payment does not populate newer statement");
 equal(allocatedPaymentsForStatement(priorStatementPayment, 724), 10257.5, "payment remains on its original statement");
+
+const wronglyRepairedNewStatementPayment = [{
+  ...priorStatementPayment[0],
+  allocations: [{ statementId: 824, cycle: "statement" as const, amount: 10257.5, date: "2026-08-15" }],
+}];
+equal(
+  allocatedPaymentsForStatement(wronglyRepairedNewStatementPayment, 824, "2026-08-24"),
+  0,
+  "payment before statement date cannot populate statement actual",
+);
+
+const futureStatementPayment = [{
+  ...priorStatementPayment[0],
+  date: "2026-09-17",
+  allocations: [{ statementId: 824, cycle: "statement" as const, amount: 10257.5, date: "2026-09-17" }],
+}];
+equal(
+  allocatedPaymentsForStatement(futureStatementPayment, 824, "2026-08-24", "2026-08-29"),
+  0,
+  "future payment cannot populate statement actual",
+);
